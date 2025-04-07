@@ -1,0 +1,17 @@
+cpu: count=2, reset_on_triple_fault=0, ignore_bad_msrs=0
+clock: sync=realtime
+sound: driver=dummy
+megs: 1024
+
+com1: enabled=1, mode=file, dev=serial.log
+com2: enabled=1, mode=file, dev=serial2.log
+
+debug: action=ignore, pci=report
+info: action=report
+error: action=report
+panic: action=ask
+
+ata0-master: type=disk, mode=flat, path="disk.img"
+boot: disk
+display_library: wx, options="gui_debug"
+magic_break: enabled=1
