@@ -1,0 +1,7 @@
+*.o
+*.img
+*.lock
+serial.*
+build/**
+.cache/**
+bx_enh_dbg.ini
