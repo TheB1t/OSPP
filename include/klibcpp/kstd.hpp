@@ -3,6 +3,7 @@
 #include <icxxabi.hpp>
 #include <klibcpp/cstdint.hpp>
 #include <driver/serial.hpp>
+#include <driver/pit.hpp>
 
 #define assert(x) kstd::_assert(x, #x, __FILE__, __LINE__)
 
@@ -99,6 +100,18 @@ namespace kstd {
         }
     }
 
+    inline void sleep_ticks(uint64_t target_ticks) {
+        uint64_t start = pit::ticks();
+        while ((pit::ticks() - start) < target_ticks)
+            asm volatile("pause");
+    }
+
+    inline void sleep_us(uint32_t target_us) {
+        uint64_t target_ticks = target_us / pit::interval();
+        target_ticks = target_ticks == 0 ? 1 : target_ticks;
+        sleep_ticks(target_ticks);
+    }
+
     inline void atexit(void (*func)()) {
         auto wrapper = [](void* func_ptr) {
             reinterpret_cast<void (*)()>(func_ptr)();
@@ -111,4 +124,16 @@ namespace kstd {
     inline void trigger_interrupt() {
         asm volatile ("int %0" : : "i"(N) : "memory");
     }
+
+    inline void set_stack_pointer(uint32_t ptr) {
+        asm volatile ("mov %0, %%esp" : : "r"(ptr) : "memory");
+    }
+
+    inline uint32_t get_stack_pointer() {
+        uint32_t ptr;
+        asm volatile ("mov %%esp, %0" : "=r"(ptr) : : "memory");
+        return ptr;
+    }
+
+    void init_fpu(void);
 };

@@ -4,8 +4,15 @@
 
 namespace pit {
     static uint64_t tick_count = 0;
+    static uint32_t interval_us = 0;
 
-    void init(uint16_t divisor) {
+    void tick_handler(bool, idt::BaseInterruptContext*) {
+        ++tick_count;
+    }
+
+    void init(uint32_t interval_us) {
+        pit::interval_us = interval_us;
+        uint16_t divisor = calculate_pit_divisor_us(interval_us);
         ports::outb(PIT_COMMAND, 0x36);  // Channel 0, Access mode: lobyte/hibyte, Mode 3 (Square Wave), Binary
 
         ports::outb(PIT_CHANNEL_0, divisor & 0xFF);        // Low byte
@@ -14,19 +21,11 @@ namespace pit {
         idt::register_irq(0, tick_handler);
     }
 
-    void tick_handler(bool, idt::BaseInterruptContext*) {
-        // serial::printf("Tick!\n");
-        ++tick_count;
-    }
-
     uint64_t ticks() {
         return tick_count;
     }
 
-    void wait(uint64_t target_ticks) {
-        uint64_t start = tick_count;
-        while ((tick_count - start) < target_ticks) {
-            asm volatile("hlt");
-        }
+    uint32_t interval() {
+        return interval_us;
     }
 }

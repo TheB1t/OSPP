@@ -177,6 +177,9 @@ namespace idt {
         TRAP_GATE = 0x0F
     };
 
+    extern Entry entries[256];
+    extern Ptr ptr;
+
     static constexpr const char* exception_messages[] = {
         "Division by zero",
         "Debug",
@@ -228,5 +231,5 @@ namespace idt {
     void unregister_isr(uint8_t vector);
     void unregister_irq(uint8_t irq);
 
-    void flush(Ptr* idtr);
+    void flush(const Ptr* idtr);
 }

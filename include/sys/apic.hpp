@@ -279,9 +279,26 @@ class apic {
             lapic_base[LAPICRegister::SIVR] |= 0x1FF;
         }
 
+        static void send_ipi(uint8_t ap, uint32_t ipi_number) {
+            lapic_base[LAPICRegister::ICR1] = (ap << 24);
+            lapic_base[LAPICRegister::ICR0] = ipi_number;
+        }
+
+        static void send_init_ipi(uint8_t ap) {
+            send_ipi(ap, 0x500);
+        }
+
+        static void send_startup_ipi(uint8_t ap, uint32_t entry) {
+            send_ipi(ap, 0x600 | entry);
+        }
+
+        static uint8_t get_lapic_id() {
+            return (lapic_base[LAPICRegister::ID] >> 24) & 0xFF;
+        }
+
         void configure() {
             bool legacy_mapped_irqs[16] = {};
-            uint32_t lapic_id = lapic_base[LAPICRegister::ID].read() >> 24;
+            uint8_t lapic_id = get_lapic_id();
 
             for (auto& ioapic : ioapics) {
                 uint32_t gsi_max = get_gsi_max(&ioapic) + ioapic.gsi_base;

@@ -53,6 +53,8 @@ class Log {
                 remaining -= written;
             };
 
+            safe_snprintf("[%010d]", static_cast<uint32_t>(pit::ticks()));
+
 #if defined(LOG_SHOW_FILE_LINE)
             const char* _file = file;
     #if !defined(LOG_SHOW_FILE_FULLPATH)
@@ -62,7 +64,7 @@ class Log {
                 _file = (last_slash > last_backslash) ? last_slash + 1 : last_backslash + 1;
             }
     #endif
-            safe_snprintf("[%20s:%-6d]", _file, line);
+            safe_snprintf("[%14s:%-6d]", _file, line);
 #else
             (void)file;
             (void)line;
@@ -74,7 +76,7 @@ class Log {
             (void)func;
 #endif
 
-            safe_snprintf("[%010d]<%6s>: ", static_cast<uint32_t>(pit::ticks()), level_str[level]);
+            safe_snprintf("<%6s>: ", level_str[level]);
             safe_snprintf(fmt, args...);
 
             serial::printf(buffer);
