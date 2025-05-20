@@ -4,15 +4,17 @@
 #include <log.hpp>
 
 namespace idt {
-    static Entry entries[256];
-    static Ptr ptr;
     static ISRHandler isr_handlers[256];
     static IRQHandler irq_handlers[16];
 
+    Entry entries[256];
+    Ptr ptr = {
+        .limit = sizeof(entries) - 1,
+        .base = reinterpret_cast<uint32_t>(&entries),
+    };
+
     void init() {
         LOG_INFO("[idt] Initializing IDT\n");
-        ptr.limit = sizeof(entries) - 1;
-        ptr.base = reinterpret_cast<uint32_t>(&entries);
 
         for(int i = 0; i < 256; i++) {
             entries[i].set_offset(reinterpret_cast<uint32_t>(isr_table[i]));
@@ -84,7 +86,7 @@ namespace idt {
         apic::EOI();
     }
 
-    void flush(Ptr* idtr) {
+    void flush(const Ptr* idtr) {
         INLINE_ASSEMBLY(
             "movl %0, %%eax\n"
             "lidt (%%eax)\n"

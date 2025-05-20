@@ -139,6 +139,8 @@ namespace mm {
 
     class vmm {
         public:
+            static uint32_t kernel_dir_phys;
+
             static void init() {
                 uint32_t pd_phys = pmm::alloc_page();
                 Entry* pd = reinterpret_cast<Entry*>(pd_phys);
@@ -165,7 +167,7 @@ namespace mm {
                 idt::register_isr(14, page_fault);
 
                 kernel_dir_phys = pd_phys;
-                load_directory(pd_phys);
+                load_directory(kernel_dir_phys);
                 enable_paging();
             }
 
@@ -258,12 +260,10 @@ namespace mm {
                     kstd::stack_trace((kstd::stack_frame*)ext->ebp, 10);
                 }
 
-                kstd::panic("Page fault at 0x%x: %s\n", cr2, err);
+                kstd::panic("Page fault at 0x%08x (faddr 0x%08x): %s\n", (uint32_t)ctx->eip, cr2, err);
             }
 
         private:
-            static uint32_t kernel_dir_phys;
-
             static void ensure_pde_valid(Entry& pde, uint32_t flags) {
                 if (!pde.has_flag(Present)) {
                     pde.invalidate();

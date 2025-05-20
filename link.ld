@@ -3,16 +3,23 @@ ENTRY(cold_start)
 OUTPUT_FORMAT(elf32-i386)
 
 SECTIONS {
-    . = 2M;
-
-    __kernel_start = .;
-
 	/* First put the multiboot header, as it is required to be put very early
 	   in the image or the bootloader won't recognize the file format.
 	   Next we'll put the .text section. */
     .multiboot : {
         *(.multiboot)
     }
+
+    /*
+        Trampoline at 8000
+    */
+    .trampoline 0x8000 : AT(0x8000) {
+        KEEP(*(.trampoline))
+    }
+
+    . = 2M;
+
+    __kernel_start = .;
 
 	.text : ALIGN(4K) {
 		*(.text)

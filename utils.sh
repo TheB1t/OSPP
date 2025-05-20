@@ -173,7 +173,7 @@ EOF
 
 #  Run qemu
 function run_qemu() {
-    run qemu-system-i386 -m 1024M -hda ${IMAGE_FILE}.img -no-reboot -no-shutdown ${@}
+    run qemu-system-x86_64 -m 1024M -hda ${IMAGE_FILE}.img -no-reboot -no-shutdown ${@}
 }
 
 function main() {
@@ -224,7 +224,7 @@ function main() {
         run_qemu -serial stdio -machine q35 --enable-kvm --cpu host -smp 4
         ;;
     "rund")
-        run_qemu -serial file:serial.log -s -S -daemonize
+        run_qemu -serial file:serial.log -s -S -daemonize -machine q35 --cpu max -smp 4
         ;;
 	"mount")
         ask_sudo || return 1

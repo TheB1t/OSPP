@@ -15,6 +15,7 @@
 #include <sys/apic.hpp>
 #include <module.hpp>
 #include <log.hpp>
+#include <sys/smp.hpp>
 
 multiboot_info_t mboot_saved;
 
@@ -75,26 +76,6 @@ extern "C" {
     void _init();
     void _fini();
 
-    inline void init_fpu(void) {
-        uint32_t cr0, cr4;
-
-        // Read CR0
-        INLINE_ASSEMBLY("mov %%cr0, %0" : "=r"(cr0));
-        // Clear EM (bit 2), set MP (bit 1)
-        cr0 &= ~(1 << 2);  // EM = 0
-        cr0 |=  (1 << 1);  // MP = 1
-        INLINE_ASSEMBLY("mov %0, %%cr0" :: "r"(cr0));
-
-        // Read CR4
-        INLINE_ASSEMBLY("mov %%cr4, %0" : "=r"(cr4));
-        // Set OSFXSR (bit 9), OSXMMEXCPT (bit 10) for SSE
-        cr4 |= (1 << 9) | (1 << 10);
-        INLINE_ASSEMBLY("mov %0, %%cr4" :: "r"(cr4));
-
-        // Initialize FPU
-        INLINE_ASSEMBLY("fninit");
-    }
-
     void kernel_early_main(multiboot_info_t* mboot, uint32_t magic) {
         serial::init();
         EarlyDisplay::clear();
@@ -113,7 +94,7 @@ extern "C" {
         );
 
         // TODO: Implement proper FPU initialization
-        init_fpu();
+        kstd::init_fpu();
 
         pic::remap();
         pit::init(pit::calculate_pit_divisor_us(1000));
@@ -155,6 +136,8 @@ extern "C" {
         kstd::trigger_interrupt<50>(); // Test interrupts :)
         // serial::set_interrupts(serial::COM1, true);
 
+        smp::init();
+
         /*
             You may initialize any components that do not depend on the
             initialization of global or static variables before calling _init().
@@ -171,7 +154,7 @@ extern "C" {
         kernel_main(&mboot_saved);
 
         for (int i = 0; i < 10; i++) {
-            pit::wait(1000);
+            kstd::sleep_ticks(1000);
             LOG_INFO("1000 ticks passed\n");
         }
 
