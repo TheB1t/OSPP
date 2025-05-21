@@ -1,5 +1,7 @@
 #include <klibcpp/kstd.hpp>
 #include <module.hpp>
+#include <driver/pit.hpp>
+#include <mm/vmm.hpp>
 
 namespace kstd {
     void stack_trace(stack_frame* frame, uint32_t max_frames) {
@@ -18,6 +20,11 @@ namespace kstd {
                     serial::printf("    [%d] 0x%08x : %s\n", i, frame->eip, sym);
                 else
                     serial::printf("    [%d] 0x%08x\n", i, frame->eip);
+            }
+
+            if (!mm::vmm::is_mapped((uint32_t)frame->ebp)) {
+                serial::printf("    Invalid frame pointer: 0x%08x\n", frame->ebp);
+                break;
             }
         }
     }
@@ -40,5 +47,17 @@ namespace kstd {
 
         // Initialize FPU
         INLINE_ASSEMBLY("fninit");
+    }
+
+    void sleep_ticks(uint64_t target_ticks) {
+        uint64_t start = pit::ticks();
+        while ((pit::ticks() - start) < target_ticks)
+            asm volatile("pause");
+    }
+
+    void sleep_us(uint32_t target_us) {
+        uint64_t target_ticks = target_us / pit::interval();
+        target_ticks = target_ticks == 0 ? 1 : target_ticks;
+        sleep_ticks(target_ticks);
     }
 }

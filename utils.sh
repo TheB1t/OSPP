@@ -173,7 +173,7 @@ EOF
 
 #  Run qemu
 function run_qemu() {
-    run qemu-system-x86_64 -m 1024M -hda ${IMAGE_FILE}.img -no-reboot -no-shutdown ${@}
+    run qemu-system-i386 -m 1024M -hda ${IMAGE_FILE}.img -no-reboot -no-shutdown ${@}
 }
 
 function main() {

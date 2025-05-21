@@ -78,6 +78,9 @@ namespace k {
                     }
                 }
 
+                if (nearest_distance > 0x1000)
+                    return nullptr;
+
                 return nearest;
             }
 

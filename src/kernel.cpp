@@ -16,6 +16,7 @@
 #include <module.hpp>
 #include <log.hpp>
 #include <sys/smp.hpp>
+#include <sched/scheduler.hpp>
 
 multiboot_info_t mboot_saved;
 
@@ -68,8 +69,20 @@ void kernel_main(multiboot_info_t*) {
     LOG_INFO("class0 use_count = %d, class1 use_count = %d\n", class0.use_count(), class1.use_count());
 
     LOG_INFO("We reached end of kernel_main\n");
-    __bochs_brk();
     EarlyDisplay::printf("Leaving kernel_main\n");
+
+    sched::Scheduler::get()->create_task("task1", []() {
+        while (true) {
+            LOG_INFO("Task 1 running\n");
+            kstd::sleep_us(1000 * 1000);
+        }
+    });
+
+    sched::Scheduler::get()->create_task("task2", []() {
+        LOG_INFO("Task 2 running\n");
+    });
+
+    kstd::sleep_us(2 * 1000 * 1000);
 }
 
 extern "C" {
@@ -146,24 +159,28 @@ extern "C" {
             global or static variables before their initialization will lead to
             undefined behavior — such as a page fault or other critical faults.
         */
-        LOG_INFO("[cpp] _init()\n");
-        _init();
-
         LOG_INFO("Hello from kernel_early_main\n");
 
-        kernel_main(&mboot_saved);
+        sched::Scheduler::get()->init([]() {
+            LOG_INFO("[cpp] _init()\n");
+            _init();
 
-        for (int i = 0; i < 10; i++) {
-            kstd::sleep_ticks(1000);
-            LOG_INFO("1000 ticks passed\n");
-        }
+            kernel_main(&mboot_saved);
 
-        // PAGE FAULT
-        // *(uint32_t*)0xDEADBEEF = 0xDEADBEEF;
+            /*
+                TODO:
+                    There's no proper deinitialization sequence yet, so
+                    we need to prevent any interrupts (for stuck scheduling)
+                    before calling _fini(), or we'll have undefined behavior.
+            */
+            INLINE_ASSEMBLY("cli");
 
-        LOG_INFO("[cpp] __cxa_finalize(0)\n");
-        __cxa_finalize(0);
-        LOG_INFO("[cpp] _fini()\n");
-        _fini();
+            LOG_INFO("[cpp] __cxa_finalize(0)\n");
+            __cxa_finalize(0);
+            LOG_INFO("[cpp] _fini()\n");
+            _fini();
+        });
+
+        __unreachable();
     }
 }
