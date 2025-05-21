@@ -18,7 +18,7 @@ SET(CMAKE_C_FLAGS_RELEASE "-g0 -O2")
 SET(CMAKE_C_FLAGS_DEBUG "-g3 -O0")
 SET(CMAKE_C_FLAGS "-m32 -fno-pic -fno-pie -ffreestanding -fno-builtin -nostdlib -nostdinc -fno-stack-protector -fno-omit-frame-pointer -fno-asynchronous-unwind-tables -Wall -Wextra")
 
-SET(CMAKE_CXX_STANDARD 20)
+SET(CMAKE_CXX_STANDARD 17)
 SET(CMAKE_CXX_STANDARD_REQUIRED ON)
 SET(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -fno-exceptions -fno-rtti")
 SET(CMAKE_LINKER_FLAGS "-static -nostdlib")
