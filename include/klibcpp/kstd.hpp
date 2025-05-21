@@ -3,7 +3,6 @@
 #include <icxxabi.hpp>
 #include <klibcpp/cstdint.hpp>
 #include <driver/serial.hpp>
-#include <driver/pit.hpp>
 
 #define assert(x) kstd::_assert(x, #x, __FILE__, __LINE__)
 
@@ -100,17 +99,8 @@ namespace kstd {
         }
     }
 
-    inline void sleep_ticks(uint64_t target_ticks) {
-        uint64_t start = pit::ticks();
-        while ((pit::ticks() - start) < target_ticks)
-            asm volatile("pause");
-    }
-
-    inline void sleep_us(uint32_t target_us) {
-        uint64_t target_ticks = target_us / pit::interval();
-        target_ticks = target_ticks == 0 ? 1 : target_ticks;
-        sleep_ticks(target_ticks);
-    }
+    void sleep_ticks(uint64_t target_ticks);
+    void sleep_us(uint32_t target_us);
 
     inline void atexit(void (*func)()) {
         auto wrapper = [](void* func_ptr) {
@@ -134,6 +124,38 @@ namespace kstd {
         asm volatile ("mov %%esp, %0" : "=r"(ptr) : : "memory");
         return ptr;
     }
+
+    class InterruptGuard {
+        public:
+            InterruptGuard() : should_enable(false) {
+                uint32_t flags;
+
+                INLINE_ASSEMBLY(
+                    "pushfl\n"
+                    "popl %0\n"
+                    "cli\n"
+                    : "=r"(flags)
+                    :
+                    : "memory"
+                );
+
+                if (flags & (1 << 9))
+                    should_enable = true;
+            }
+
+            ~InterruptGuard() {
+                if (should_enable)
+                    INLINE_ASSEMBLY("sti");
+            }
+
+            InterruptGuard(const InterruptGuard&) = delete;
+            InterruptGuard& operator=(const InterruptGuard&) = delete;
+            InterruptGuard(InterruptGuard&&) = delete;
+            InterruptGuard& operator=(InterruptGuard&&) = delete;
+
+        private:
+            bool should_enable;
+    };
 
     void init_fpu(void);
 };

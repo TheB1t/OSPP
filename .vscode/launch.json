@@ -5,7 +5,7 @@
             "name": "kernel-debug",
             "type": "cppdbg",
             "request": "launch",
-            "targetArchitecture": "x86_64",
+            "targetArchitecture": "x86",
             "miDebuggerServerAddress": "localhost:1234",
             "program": "${workspaceFolder}/output/kernel.orig",
             "args": [],
@@ -24,7 +24,22 @@
                 },
                 {
                     "description": "Set debuggee architecture",
-                    "text": "set archi i386:x86-64",
+                    "text": "set archi i386",
+                    "ignoreFailures": true
+                },
+                                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Enable C++ object display",
+                    "text": "-gdb-set print object on",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set output to hexadecimal",
+                    "text": "-gdb-set output-radix 16",
                     "ignoreFailures": true
                 }
             ],

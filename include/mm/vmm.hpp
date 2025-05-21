@@ -263,6 +263,13 @@ namespace mm {
                 kstd::panic("Page fault at 0x%08x (faddr 0x%08x): %s\n", (uint32_t)ctx->eip, cr2, err);
             }
 
+            static bool is_mapped(uint32_t virt_addr) {
+                if (!TableEntry::Accessor<PDE>::get(virt_addr).has_flag(Present))
+                    return false;
+
+                return TableEntry::Accessor<PTE>::get(virt_addr).has_flag(Present);
+            }
+
         private:
             static void ensure_pde_valid(Entry& pde, uint32_t flags) {
                 if (!pde.has_flag(Present)) {

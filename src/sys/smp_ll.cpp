@@ -25,7 +25,6 @@ void warm_start_16() {
 
         "lgdt smp_gdt_ptr\n"
 
-        "xchg %%bx, %%bx\n"
         "ljmp %[kcode], $_long_jump\n"
 
         ".code32\n"

@@ -36,6 +36,8 @@ class Log {
 
         template <typename... Args>
         void printf(LogLevel level, const char* file, int line, const char* func, const char *fmt, const Args&... args) {
+            kstd::InterruptGuard guard;
+
             if (level > global_level)
                 return;
 

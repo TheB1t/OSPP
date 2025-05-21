@@ -56,9 +56,10 @@ namespace idt {
         BaseInterruptContext* ctx = reinterpret_cast<BaseInterruptContext*>(ctx_ptr);
 
         /*
-            Temporary solution for not blowing things up.
-            But if there a nested interrupt occurs, or 
-            SMP is enabled, this won't work.
+            TODO:
+                Temporary solution for not blowing things up.
+                But if there a nested interrupt occurs, or 
+                SMP is enabled, this won't work.
         */
         static char fxsave_region[512] __attribute__((aligned(16)));
         asm volatile(" fxsave %0 "::"m"(fxsave_region));

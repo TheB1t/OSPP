@@ -133,7 +133,7 @@ namespace idt {
 namespace idt {
     template <int N>
     constexpr uint32_t get_isr_wrapper() {
-        if constexpr (N == 32 || N == 14)
+        if constexpr (N == 32 || N == 14 || N == 33)
             return (uint32_t)&context_switch<N>;
 
         if constexpr (N == 8 || N == 10 || N == 11 || N == 12 || N == 13 || N == 14 || N == 17 || N == 21)
