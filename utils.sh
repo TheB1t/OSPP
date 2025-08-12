@@ -96,6 +96,7 @@ function create_image() {
 #  Create loop device
 function create_loop() {
     run_sudo losetup -P /dev/${LOOP_DEV} ${IMAGE_FILE}.img
+    run_sudo kpartx /dev/${LOOP_DEV}
 }
 
 #  Create ext2 filesystem
@@ -115,7 +116,7 @@ function mount_loop() {
 
 #  Install grub
 function install_grub() {
-    run_sudo grub-install --target=i386-pc --root-directory=${MOUNT_DIR} --boot-directory=${MOUNT_DIR}/boot --no-floppy --modules="normal part_msdos ext2 multiboot" /dev/${LOOP_DEV}
+    run_sudo grub-install --target=i386-pc --root-directory=${MOUNT_DIR} --boot-directory=${MOUNT_DIR}/boot --no-floppy --modules=\"normal part_msdos ext2 multiboot\" /dev/${LOOP_DEV}
 }
 
 #  Umount loop device
@@ -149,26 +150,54 @@ function build() {
     run strip --strip-all ${KERNEL_PATH}
 }
 
-function pack() {
+grub_cfg_lines=()
+
+add_config_line() {
+    grub_cfg_lines+=("$1")
+}
+
+generate_grub_config() {
     local dst=$1
 
-    safe_rm ${dst}/*
+    {
+        for line in "${grub_cfg_lines[@]}"; do
+            echo "$line"
+        done
+    } | sudo tee "${dst}" > /dev/null
+}
+
+function pack() {
+    shopt -s nullglob
+
+    local dst=$1
+
+    safe_rm "${dst}/*"
 
     run_sudo mkdir -p ${dst}/boot/grub
-    sudo tee "${dst}/boot/grub/grub.cfg" > /dev/null << EOF
-timeout=1
-default=0
+    run_sudo mkdir -p ${dst}/modules
 
-menuentry 'OS++' {
-    multiboot /kernel
-    module /debug.ko
-    boot
-}
-EOF
+    run_sudo mkdir -p ${dst}/boot/grub
+    run_sudo mkdir -p ${dst}/modules
+
+    run_sudo cp ${KERNEL_PATH} ${dst}/
+    run_sudo cp ${OUTPUT_DIR}/modules/* ${dst}/modules
+
+    add_config_line "timeout=1"
+    add_config_line "default=0"
+    add_config_line "menuentry 'OS++' {"
+    add_config_line "   multiboot /kernel"
+
+    for f in "${dst}/modules/"*; do
+        rel_path="${f#$dst}"
+        add_config_line "   module $rel_path"
+    done
+
+    add_config_line "   boot"
+    add_config_line "}"
+
+    generate_grub_config ${dst}/boot/grub/grub.cfg
 
     cat ${dst}/boot/grub/grub.cfg
-    run_sudo cp ${KERNEL_PATH} ${dst}/
-    run_sudo python3 scripts/make_module.py debug_symbols ${DEBUG_KERNEL_PATH} debug --output-path ${dst}/
 }
 
 #  Run qemu
@@ -226,6 +255,9 @@ function main() {
     "rund")
         run_qemu -serial file:serial.log -s -S -daemonize -machine q35 --cpu max -smp 4
         ;;
+    "run_nog")
+        run_qemu -serial file:serial.log -machine q35 --cpu max -smp 4 -nographic
+        ;;
 	"mount")
         ask_sudo || return 1
         create_loop
@@ -266,6 +298,12 @@ function main() {
         fi
 
         run_sudo dd if=${IMAGE_FILE}.img of=${drive} status=progress
+        ;;
+    "env_init")
+        run_sudo docker build . -t ospp_workimage
+        ;;
+    "env_start")
+        run_sudo docker run --privileged -it --rm -v /dev:/dev -v ${PWD}:/work ospp_workimage
         ;;
 	*)
 	    [[ -n "$action" ]] && log_err "Not implemented action $1" || log_err "Action not passed"
