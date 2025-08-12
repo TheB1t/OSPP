@@ -1,83 +1,47 @@
 # OSPP (OS++)
 
-### What is this?
+## Overview
 
-This is a hobby project of mine, where i'm trying to create my own operating system (5th try).
+OSPP (OS++) is a hobbyist kernel project designed to explore low-level system programming using C++17. Built for x86 architectures, it implements a modular monolithic kernel with core functionalities like memory management, interrupt handling, and task scheduling. The project leverages C++'s type safety and abstractions to create a clean, extensible system, debugged and tested on both emulators (QEMU, Bochs) and real hardware.
 
-### What tools i using for development
+## Build Requirements
 
-Debugging tools & things:
-- qemu
-- bochs
-- gdb
-- real hardware
-
-Compile & build tools:
-- gcc
-- cmake
-
-#### Hardware list
-
-| Manufacturer | Model | Type        | Chipset   | Processor               | RAM                                 |
-| ------------ | ----- | ----------- | --------- | ----------------------- | ----------------------------------- |
-| HP           | T5570 | Thin Client | VIA VX900 | VIA Nano U3500, 1000MHz | `1Gb Samsung M471B2873FHS-CH9` x1   |
-
-### Requirements for build and run
-
-1. Install this packages (if you using debian-based system):
+For Debian-based systems, install the following packages:
 
 ```bash
 sudo apt -y install qemu qemu-system gcc g++ binutils make cmake grub-pc
 ```
 
-### How to build/pack/run it
+## Build and Run Instructions
 
-1. Create image (need only once, or if you don't have image, or want to recreate it):
+1. **Initialize Disk Image** (creates a 32MB disk image with ext2 filesystem and GRUB):
 
-```bash
-./utils.sh init
-```
+   ```bash
+   ./utils.sh init
+   ```
 
-2. Build and pack kernel into image:
+2. **Build and Pack Kernel**:
 
-```bash
-./utils.sh pack
-```
+   ```bash
+   ./utils.sh pack [Debug|Release]
+   ```
 
-3. Running
-    1. Using `qemu`:
+3. **Run Options**:
 
-    ```bash
-    ./utils.sh run
-    ```
+   - QEMU: `./utils.sh run`
+   - QEMU with KVM: `./utils.sh runk`
+   - Bochs: `./utils.sh runb`
+   - Debug with GDB: `./utils.sh rund`
 
-    2. Using `qemu` with kvm:
+4. **Manual Build**:
 
-    ```bash
-    ./utils.sh runk
-    ```
+   ```bash
+   cmake -B build . -DCMAKE_BUILD_TYPE=Debug
+   make -C build -j$(nproc)
+   ```
 
-    3. Using `bochs`:
+   Binaries are output to the `output/` directory.
 
-    ```bash
-    ./utils.sh runb
-    ```
+## Acknowledgments
 
-or you can run the build manually using:
-
-```bash
-cmake -B build .
-make -C build
-```
-
-and run as you prefer. Compiled binaries will be located in the `output/bin` folder.
-
-### Contributing
-
-If you want to contribute to this project, you can do so by following these steps:
-
-1. Fork this repo
-2. Create a branch
-3. Commit your changes
-4. Create a pull request
-5. Wait for review
+Inspired by OSDev.org and open-source community resources.
