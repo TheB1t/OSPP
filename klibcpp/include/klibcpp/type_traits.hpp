@@ -117,4 +117,30 @@ namespace kstd {
 
     template <size_t N>
     using make_index_sequence = typename make_index_sequence_impl<N>::type;
+
+
+    template<typename T>
+    struct remove_reference {
+        typedef T type;
+    };
+
+    template<typename T>
+    struct remove_reference<T&> {
+        typedef T type;
+    };
+
+    template<typename T>
+    struct remove_reference<T&&> {
+        typedef T type;
+    };
+
+    template<typename T>
+    constexpr T&& forward(typename remove_reference<T>::type& t) noexcept {
+        return static_cast<T&&>(t);
+    }
+
+    template<typename T>
+    constexpr T&& forward(typename remove_reference<T>::type&& t) noexcept {
+        return static_cast<T&&>(t);
+    }
 }

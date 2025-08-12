@@ -8,7 +8,7 @@ void warm_start_32() {
     if (current)
         current->init();
     else
-        serial::printf("Failed to get current core\n");
+        LOG_WARN("Failed to get current core\n");
 }
 
 __extern_c

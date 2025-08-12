@@ -1,7 +1,7 @@
 *.o
 *.img
 *.lock
-serial.*
+./serial.*
 build/**
 .cache/**
 output/**

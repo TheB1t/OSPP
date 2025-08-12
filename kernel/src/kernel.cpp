@@ -13,7 +13,6 @@
 #include <driver/early_display.hpp>
 #include <sys/acpi.hpp>
 #include <sys/apic.hpp>
-#include <module.hpp>
 #include <log.hpp>
 #include <sys/smp.hpp>
 #include <sched/scheduler.hpp>
@@ -123,7 +122,7 @@ extern "C" {
         idt::init();
 
         /*
-            Above this point, only exceptions are functional; 
+            Above this point, only exceptions are functional;
             user-defined or hardware interrupts will be ignored.
         */
         __sti();
@@ -138,8 +137,6 @@ extern "C" {
             will result in a page fault or other undefined behavior.
         */
         kernel_heap.create(0x01000000, HEAP_MIN_SIZE, 0x02000000, mm::Present | mm::Writable);
-
-        k::KernelModuleRegistry::get()->load_modules(&mboot_saved);
 
         apic::get()->configure(); // Initialize APIC
 

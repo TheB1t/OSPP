@@ -38,17 +38,13 @@ SECTIONS {
 	}
 
     .init_array : {
-        crti.o(.init_array)
-        KEEP (*(SORT(EXCLUDE_FILE(crti.o crtn.o) .init_array.*)))
-        KEEP (*(EXCLUDE_FILE(crti.o crtn.o) .init_array))
-        crtn.o(.init_array)
+        KEEP (*(SORT(.init_array.*)))
+        KEEP (*(.init_array))
     }
 
     .fini_array : {
-        crti.o(.fini_array)
-        KEEP (*(SORT(EXCLUDE_FILE(crti.o crtn.o) .fini_array.*)))
-        KEEP (*(EXCLUDE_FILE(crti.o crtn.o) .fini_array))
-        crtn.o(.fini_array)
+        KEEP (*(SORT(.fini_array.*)))
+        KEEP (*(.fini_array))
     }
 
     __kernel_end = .;
