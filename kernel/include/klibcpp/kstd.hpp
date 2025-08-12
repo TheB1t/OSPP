@@ -1,42 +1,13 @@
 #pragma once
 
 #include <icxxabi.hpp>
+#include <klibcpp/utility.hpp>
 #include <klibcpp/cstdint.hpp>
 #include <driver/serial.hpp>
 
 #define assert(x) kstd::_assert(x, #x, __FILE__, __LINE__)
 
 namespace kstd {
-    template<typename T>
-    struct remove_reference {
-        typedef T type;
-    };
-
-    template<typename T>
-    struct remove_reference<T&> {
-        typedef T type;
-    };
-
-    template<typename T>
-    struct remove_reference<T&&> {
-        typedef T type;
-    };
-
-    template<typename T>
-    constexpr T&& forward(typename remove_reference<T>::type& t) noexcept {
-        return static_cast<T&&>(t);
-    }
-
-    template<typename T>
-    constexpr T&& forward(typename remove_reference<T>::type&& t) noexcept {
-        return static_cast<T&&>(t);
-    }
-
-    template<typename T>
-    constexpr typename remove_reference<T>::type&& move(T&& t) noexcept {
-        return static_cast<typename remove_reference<T>::type&&>(t);
-    }
-
     struct stack_frame {
         stack_frame* ebp;
         uint32_t eip;

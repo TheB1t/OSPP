@@ -1,6 +1,6 @@
 #include <klibcpp/cstring.hpp>
 #include <klibcpp/cstdarg.hpp>
-#include <printf_impl.hpp>
+#include <klibcpp/printf_impl.hpp>
 
 uint32_t strlen(char str[]) {
     uint32_t len = 0;

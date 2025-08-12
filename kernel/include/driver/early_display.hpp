@@ -3,7 +3,7 @@
 #include <klibcpp/cstdint.hpp>
 #include <klibcpp/cstring.hpp>
 #include <klibcpp/kstd.hpp>
-#include <printf_impl.hpp>
+#include <klibcpp/printf_impl.hpp>
 
 class EarlyDisplay {
     public:
