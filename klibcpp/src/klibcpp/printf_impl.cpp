@@ -1,153 +1,127 @@
 #include <klibcpp/printf_impl.hpp>
 
+static void put_padding(OutputSink& out, char sym, int padding) {
+    while (padding-- > 0)
+        out.putc(out.ctx, sym);
+}
+
+static void put_string(OutputSink& out, const char* str, int width, bool padRight, char sym) {
+    if (!str)
+        str = "(null)";
+
+    const int len = (int)strlen(str);
+    const int padding = width > len ? width - len : 0;
+
+    if (!padRight)
+        put_padding(out, sym, padding);
+
+    while (*str)
+        out.putc(out.ctx, *str++);
+
+    if (padRight)
+        put_padding(out, ' ', padding);
+}
+
 void _vprintf(OutputSink& out, const char* format, va_list args) {
     char c;
-    int num = 0;
-    int precision = -1;
-    char sym = ' ';
-    char buf[32];
-    bool padRight = false;
+    char buf[64];
 
     while ((c = *format++) != 0) {
-        padRight = false;
-        sym = ' ';
-        num = 0;
-        precision = -1;
-
         if (c != '%') {
             out.putc(out.ctx, c);
-        } else {
-            c = *format++;
-            if (c == 0) break;
+            continue;
+        }
 
-        back:
-            switch (c) {
-                case 'd':
-                case 'u':
-                case 'x': {
-                    int value = va_arg(args, int);
-                    if (c == 'x')
-                        htoa(value, buf);
-                    else
-                        itoa(value, buf);
-                    char* p = buf;
-                    int len = strlen(p);
+        if (*format == '\0')
+            break;
 
-                    if (num) {
-                        int padding = num - len;
-                        if (padding > 0 && !padRight) {
-                            while (padding--)
-                                out.putc(out.ctx, sym);
-                        }
-                    }
+        if (*format == '%') {
+            out.putc(out.ctx, *format++);
+            continue;
+        }
 
-                    while (*p)
-                        out.putc(out.ctx, *p++);
+        bool padRight = false;
+        char sym = ' ';
+        int width = 0;
+        int precision = -1;
 
-                    if (num) {
-                        int padding = num - len;
-                        if (padding > 0 && padRight) {
-                            while (padding--)
-                                out.putc(out.ctx, sym);
-                        }
-                    }
-                    break;
-                }
+        if (*format == '-') {
+            padRight = true;
+            ++format;
+        }
 
-                case 's': {
-                    char* p = va_arg(args, char*);
-                    if (!p)
-                        p = (char*)"(null)";
-                    int len = strlen(p);
+        if (*format == '0' || *format == ' ') {
+            sym = *format;
+            ++format;
+        }
 
-                    if (num) {
-                        int padding = num - len;
-                        if (padding > 0 && !padRight) {
-                            while (padding--)
-                                out.putc(out.ctx, sym);
-                        }
-                    }
+        while (*format >= '0' && *format <= '9') {
+            width = width * 10 + (*format - '0');
+            ++format;
+        }
 
-                    while (*p)
-                        out.putc(out.ctx, *p++);
+        if (*format == '.') {
+            precision = 0;
+            ++format;
 
-                    if (num) {
-                        int padding = num - len;
-                        if (padding > 0 && padRight) {
-                            while (padding--)
-                                out.putc(out.ctx, sym);
-                        }
-                    }
-                    break;
-                }
-
-                case 'c': {
-                    int ch = va_arg(args, int);
-                    out.putc(out.ctx, static_cast<char>(ch));
-                    break;
-                }
-
-                case 'f': {
-                    double value = va_arg(args, double);
-                    int prec = (precision == -1) ? 6 : precision;
-                    ftoa(value, buf, prec);
-                    char* p = buf;
-                    int len = strlen(p);
-
-                    if (num) {
-                        int padding = num - len;
-                        if (padding > 0 && !padRight) {
-                            while (padding--)
-                                out.putc(out.ctx, sym);
-                        }
-                    }
-
-                    while (*p)
-                        out.putc(out.ctx, *p++);
-
-                    if (num) {
-                        int padding = num - len;
-                        if (padding > 0 && padRight) {
-                            while (padding--)
-                                out.putc(out.ctx, sym);
-                        }
-                    }
-                    break;
-                }
-
-                default: {
-                    if (*(format - 2) == '%') {
-                        if (c == '-') {
-                            padRight = true;
-                            c = *format++;
-                        }
-                        if (c == '0' || c == ' ') {
-                            sym = c;
-                            c = *format++;
-                        }
-
-                        num = 0;
-                        while (c >= '0' && c <= '9') {
-                            num = num * 10 + (c - '0');
-                            c = *format++;
-                        }
-
-                        if (c == '.') {
-                            c = *format++;
-                            precision = 0;
-                            while (c >= '0' && c <= '9') {
-                                precision = precision * 10 + (c - '0');
-                                c = *format++;
-                            }
-                        }
-
-                        goto back;
-                    } else {
-                        out.putc(out.ctx, c);
-                    }
-                    break;
-                }
+            while (*format >= '0' && *format <= '9') {
+                precision = precision * 10 + (*format - '0');
+                ++format;
             }
+        }
+
+        c = *format++;
+        switch (c) {
+            case 'd': {
+                itoa(va_arg(args, int), buf);
+                put_string(out, buf, width, padRight, sym);
+                break;
+            }
+
+            case 'u': {
+                utoa(va_arg(args, unsigned int), buf);
+                put_string(out, buf, width, padRight, sym);
+                break;
+            }
+
+            case 'x': {
+                htoa(va_arg(args, unsigned int), buf);
+                put_string(out, buf, width, padRight, sym);
+                break;
+            }
+
+            case 'p': {
+                buf[0] = '0';
+                buf[1] = 'x';
+                htoa((uint32_t)va_arg(args, void*), buf + 2);
+                put_string(out, buf, width, padRight, sym);
+                break;
+            }
+
+            case 's': {
+                const char* str = va_arg(args, const char*);
+                put_string(out, str, width, padRight, sym);
+                break;
+            }
+
+            case 'c': {
+                buf[0] = (char)va_arg(args, int);
+                buf[1] = '\0';
+                put_string(out, buf, width, padRight, sym);
+                break;
+            }
+
+            case 'f': {
+                const int prec = precision == -1 ? 6 : precision;
+                ftoa((float)va_arg(args, double), buf, prec);
+                put_string(out, buf, width, padRight, sym);
+                break;
+            }
+
+            default:
+                out.putc(out.ctx, '%');
+                out.putc(out.ctx, c);
+                break;
         }
     }
 }

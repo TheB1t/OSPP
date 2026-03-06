@@ -20,28 +20,32 @@ void strcpy(char *dst, const char *src) {
 }
 
 void strncpy(char *dst, const char *src, uint32_t max) {
-    uint32_t len = strlen(src) + 1;
-    len = len > max ? max : len;
+    uint32_t i = 0;
+    for (; i < max && src[i] != '\0'; ++i)
+        dst[i] = src[i];
 
-    for (uint32_t i = 0; i < len; i++)
-        *dst++ = *src++;
-
-    *dst = '\0';
+    for (; i < max; ++i)
+        dst[i] = '\0';
 }
 
 int strcmp(const char *s1, const char *s2) {
-    if (strlen(s1) != strlen(s2)) return 1;
-    while (*s1 != '\0' && *s2 != '\0') {
-        if (*s1 != *s2) return 1;
-        s1++;
-        s2++;
+    while (*s1 && (*s1 == *s2)) {
+        ++s1;
+        ++s2;
     }
-    return 0;
+
+    return (int)((uint8_t)*s1) - (int)((uint8_t)*s2);
 }
 
 int strncmp(const char *s1, const char *s2, uint32_t len) {
     for (uint32_t i = 0; i < len; i++) {
-        if (s1[i] != s2[i]) return 1;
+        const uint8_t c1 = (uint8_t)s1[i];
+        const uint8_t c2 = (uint8_t)s2[i];
+        if (c1 != c2)
+            return (int)c1 - (int)c2;
+
+        if (c1 == '\0')
+            return 0;
     }
     return 0;
 }
@@ -150,6 +154,7 @@ void reverse(char str[]) {
 void _vtoa(char* result, uint32_t base, int32_t value) {
     if (base < 2 || base > 36) {
         *result = '\0';
+        return;
     }
 
     char *ptr = result, *ptr1 = result, tmp_char;
@@ -170,27 +175,39 @@ void _vtoa(char* result, uint32_t base, int32_t value) {
     }
 }
 
+static void _uvtoa(char* result, uint32_t base, uint32_t value) {
+    if (base < 2 || base > 36) {
+        *result = '\0';
+        return;
+    }
+
+    char* ptr = result;
+    char* ptr1 = result;
+    char tmp_char;
+
+    do {
+        uint32_t tmp_value = value;
+        value /= base;
+        *ptr++ = "0123456789abcdefghijklmnopqrstuvwxyz"[tmp_value - value * base];
+    } while (value);
+
+    *ptr-- = '\0';
+    while (ptr1 < ptr) {
+        tmp_char = *ptr;
+        *ptr-- = *ptr1;
+        *ptr1++ = tmp_char;
+    }
+}
+
 void itoa(int32_t n, char str[]) {
     _vtoa(str, 10, n);
 }
 
 void utoa(uint32_t n, char str[]) {
-    uint32_t i;
-    i = 0;
-    if (n == 0) {
-        str[i++] = '0';
-    }
-    while (n > 0) {
-        str[i++] = (n % 10) + '0'; // Calculate the current lowest value digit and convert it
-        n /= 10;
-    }
-
-    str[i] = '\0';
-
-    reverse(str);
+    _uvtoa(str, 10, n);
 }
 
-uint32_t atou(char str[]) {
+uint32_t atou(const char str[]) {
     uint32_t result = 0;
     for(; *str; ++str) {
         result *= 10;
@@ -201,7 +218,7 @@ uint32_t atou(char str[]) {
 }
 
 void htoa(uint32_t in, char str[]) {
-    _vtoa(str, 16, in);
+    _uvtoa(str, 16, in);
 }
 
 void ftoa(float in, char str[], uint32_t precision) {
@@ -241,7 +258,7 @@ void ftoa(float in, char str[], uint32_t precision) {
     *p = '\0';
 }
 
-void strcat(char *dst, char *src) {
+void strcat(char *dst, const char *src) {
     char *end = dst + strlen(dst);
 
     while (*src != '\0') *end++ = *src++;

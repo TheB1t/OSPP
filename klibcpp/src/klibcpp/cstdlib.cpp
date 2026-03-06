@@ -37,7 +37,7 @@ void* operator new(size_t size, align_val_t alignment) {
     if (api.kmalloc)
         return api.kmalloc(size, (uint32_t)alignment > 0);
 
-    kstd::panic("kfree not found");
+    kstd::panic("kmalloc not found");
     return (void*)0xDEADADDD; // Unreachable, warn suppression
 }
 
@@ -109,7 +109,7 @@ __extern_c {
             api.putc(c);
     }
 
-    void puts(char* s) {
+    void puts(const char* s) {
         if (!api.putc)
             return;
 

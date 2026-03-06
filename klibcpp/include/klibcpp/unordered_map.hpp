@@ -161,7 +161,7 @@ namespace kstd {
 
             void compute_bucket_(const K& key, uint32_t& h, uint32_t& idx, Node*& head) {
                 if constexpr (kstd::is_same_v<K, const char*> || kstd::is_same_v<K, char*>) {
-                    h = Node::hash_fold32_cstr(key ? key : "");
+                    h = kstd::hash_fold32_cstr(key ? key : "");
                 } else {
                     h = Node::hash_fold32_trivial(key);
                 }
@@ -171,7 +171,7 @@ namespace kstd {
 
             void compute_bucket_const_(const K& key, uint32_t& h, uint32_t& idx, Node*& head) const {
                 if constexpr (kstd::is_same_v<K, const char*> || kstd::is_same_v<K, char*>) {
-                    h = Node::hash_fold32_cstr(key ? key : "");
+                    h = kstd::hash_fold32_cstr(key ? key : "");
                 } else {
                     h = Node::hash_fold32_trivial(key);
                 }

@@ -64,7 +64,7 @@ namespace kstd {
                 if (this != &other) {
                     clear();
                     if (data_) {
-                        operator delete(data_);
+                        ::operator delete(data_, align_val_t(alignof(T)));
                     }
 
                     data_ = other.data_;

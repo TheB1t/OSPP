@@ -21,12 +21,26 @@ namespace kstd {
                     ++block->refcount;
             }
 
+            shared_ptr(shared_ptr&& other) noexcept
+                : block(other.block) {
+                other.block = nullptr;
+            }
+
             shared_ptr& operator=(const shared_ptr& other) {
                 if (this != &other) {
                     release();
                     block = other.block;
                     if (block)
                         ++block->refcount;
+                }
+                return *this;
+            }
+
+            shared_ptr& operator=(shared_ptr&& other) noexcept {
+                if (this != &other) {
+                    release();
+                    block = other.block;
+                    other.block = nullptr;
                 }
                 return *this;
             }
@@ -51,6 +65,10 @@ namespace kstd {
                 return block ? block->refcount : 0;
             }
 
+            explicit operator bool() const {
+                return get() != nullptr;
+            }
+
             void reset() {
                 release();
                 block = nullptr;
@@ -73,13 +91,17 @@ namespace kstd {
             ptr_block* block;
 
             void release() {
-                if (block) {
-                    if (--block->refcount == 0) {
-                        if (block->ptr)
-                            delete block->ptr;
+                if (!block)
+                    return;
 
-                        delete block;
-                    }
+                ptr_block* old = block;
+                block = nullptr;
+
+                if (--old->refcount == 0) {
+                    if (old->ptr)
+                        delete old->ptr;
+
+                    delete old;
                 }
             }
     };

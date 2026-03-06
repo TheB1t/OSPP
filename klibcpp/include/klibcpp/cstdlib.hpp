@@ -56,6 +56,6 @@ __extern_c {
     uint64_t __umoddi3(uint64_t a, uint64_t b);
 
     void putc(char c);
-    void puts(char* s);
+    void puts(const char* s);
     char getc();
 }
