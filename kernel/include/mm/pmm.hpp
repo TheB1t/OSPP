@@ -14,6 +14,10 @@ namespace mm {
     static constexpr uint32_t PAGE_SIZE = 4096;
     static constexpr uint32_t MAX_PAGES = 1 << 20;
 
+    inline uint32_t align_down(uint32_t val, uint32_t align) {
+        return val & ~(align - 1);
+    }
+
     inline uint32_t align_up(uint32_t val, uint32_t align) {
         return (val + align - 1) & ~(align - 1);
     }

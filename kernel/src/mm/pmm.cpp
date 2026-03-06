@@ -10,6 +10,15 @@ namespace mm {
 
     static const char* typeNames[] = { "UNKNOWN", "AVAILABLE", "RESERVED", "ACPI", "NVS", "BAD MEMORY" };
 
+    static uint32_t page_aligned_span(uint32_t base, uint32_t size) {
+        if (!size)
+            return 0;
+
+        uint32_t start = align_down(base, PAGE_SIZE);
+        uint32_t end = align_up(base + size, PAGE_SIZE);
+        return end - start;
+    }
+
     void pmm::init(multiboot_info_t* mboot) {
         if (!TEST_MASK(mboot->flags, MULTIBOOT_INFO_MEM_MAP))
             kstd::panic("Bootloader can't store memory map!\n");
@@ -46,8 +55,21 @@ namespace mm {
         LOG_INFO("[pmm] Mapping kernel memory\n");
         LOG_INFO("- from 0x%08x\n", (uint32_t)&__kernel_start);
         LOG_INFO("- to 0x%08x\n", (uint32_t)&__kernel_end);
-        deinit_region((uint32_t)&__kernel_start, (uint32_t)&__kernel_end - (uint32_t)&__kernel_start);
-        used_pages += ((uint32_t)&__kernel_end - (uint32_t)&__kernel_start) / PAGE_SIZE;
+        uint32_t kernel_span = page_aligned_span((uint32_t)&__kernel_start, (uint32_t)&__kernel_end - (uint32_t)&__kernel_start);
+        deinit_region((uint32_t)&__kernel_start, kernel_span);
+        used_pages += kernel_span / PAGE_SIZE;
+
+        if (TEST_MASK(mboot->flags, MULTIBOOT_INFO_MODS)) {
+            multiboot_module_t* mod = reinterpret_cast<multiboot_module_t*>(mboot->mods_addr);
+            for (uint32_t i = 0; i < mboot->mods_count; ++i) {
+                uint32_t size = mod[i].mod_end - mod[i].mod_start;
+                uint32_t span = page_aligned_span(mod[i].mod_start, size);
+
+                LOG_INFO("[pmm] Reserving module %d at 0x%08x-0x%08x\n", i, mod[i].mod_start, mod[i].mod_end);
+                deinit_region(mod[i].mod_start, span);
+                used_pages += span / PAGE_SIZE;
+            }
+        }
 
         uint32_t tmem = total_memory();
         uint32_t fmem = free_memory();
@@ -139,8 +161,12 @@ namespace mm {
 
         uint32_t align = base % PAGE_SIZE;
         if (align) {
-            size -= align;
-            base += align;
+            uint32_t delta = PAGE_SIZE - align;
+            if (size <= delta)
+                return;
+
+            size -= delta;
+            base += delta;
         }
 
         if (size < PAGE_SIZE)
@@ -159,8 +185,11 @@ namespace mm {
     }
 
     void pmm::deinit_region(uint32_t base, size_t size) {
-        uint32_t start = base / PAGE_SIZE;
-        uint32_t pages = size / PAGE_SIZE;
+        if (!size)
+            return;
+
+        uint32_t start = align_down(base, PAGE_SIZE) / PAGE_SIZE;
+        uint32_t pages = align_up(base + size, PAGE_SIZE) / PAGE_SIZE - start;
 
         for (uint32_t i = start; i < start + pages; i++) {
             set_bit(i);
