@@ -225,7 +225,6 @@ namespace idt {
     using IRQHandler = void(*)(bool, BaseInterruptContext*);
 
     void init();
-    void set_entry(uint8_t vector, void (*handler)(), uint8_t flags, uint16_t selector = 0x08);
     void register_isr(uint8_t vector, ISRHandler handler);
     void register_irq(uint8_t irq, IRQHandler handler);
     void unregister_isr(uint8_t vector);

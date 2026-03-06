@@ -7,6 +7,12 @@ namespace idt {
     static ISRHandler isr_handlers[256];
     static IRQHandler irq_handlers[16];
 
+    static void set_entry(uint8_t vector, void (*handler)(), uint8_t flags, uint16_t selector = 0x08) {
+        entries[vector].set_offset(reinterpret_cast<uint32_t>(handler));
+        entries[vector].selector = selector;
+        entries[vector].type_attr = flags;
+    }
+
     Entry entries[256];
     Ptr ptr = {
         .limit = sizeof(entries) - 1,
@@ -17,19 +23,11 @@ namespace idt {
         LOG_INFO("[idt] Initializing IDT\n");
 
         for(int i = 0; i < 256; i++) {
-            entries[i].set_offset(reinterpret_cast<uint32_t>(isr_table[i]));
-            entries[i].selector = 0x08;
             entries[i].zero = 0;
-            entries[i].type_attr = Flags::PRESENT | Flags::INTERRUPT_GATE;
+            set_entry(i, reinterpret_cast<void(*)()>(isr_table[i]), Flags::PRESENT | Flags::INTERRUPT_GATE);
         }
 
         flush(&ptr);
-    }
-
-    void set_entry(uint8_t vector, void (*handler)(), uint8_t flags, uint16_t selector) {
-        entries[vector].set_offset(reinterpret_cast<uint32_t>(handler));
-        entries[vector].selector = selector;
-        entries[vector].type_attr = flags;
     }
 
     void register_isr(uint8_t vector, ISRHandler handler) {
@@ -38,8 +36,6 @@ namespace idt {
 
     void register_irq(uint8_t irq, IRQHandler handler) {
         irq_handlers[irq] = handler;
-        set_entry(32 + irq, reinterpret_cast<void(*)()>(handler),
-                      Flags::PRESENT | Flags::INTERRUPT_GATE);
     }
 
     void unregister_isr(uint8_t vector) {
@@ -48,8 +44,6 @@ namespace idt {
 
     void unregister_irq(uint8_t irq) {
         irq_handlers[irq] = nullptr;
-        set_entry(32 + irq, reinterpret_cast<void(*)()>(isr_table[irq]),
-                      Flags::PRESENT | Flags::INTERRUPT_GATE);
     }
 
     void isr_handler(uint8_t no, uint32_t err, bool has_ext, void* ctx_ptr) {
