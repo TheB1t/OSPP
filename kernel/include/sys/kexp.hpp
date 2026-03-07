@@ -5,7 +5,7 @@
 
 namespace kexp {
     struct Entry {
-        uint64_t name_hash;
+        uint64_t    name_hash;
         const void* addr;
     } __packed;
 

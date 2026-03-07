@@ -9,40 +9,40 @@ class acpi {
     public:
         struct SDTHeader {
             union {
-                char        signature[4];
-                uint32_t    signature_num;
+                char     signature[4];
+                uint32_t signature_num;
             };
-            uint32_t    length;
-            uint8_t     revision;
-            uint8_t     checksum;
-            char        OEMID[6];
-            char        OEM_table_ID[8];
-            uint32_t    OEM_revision;
-            uint32_t    creator_ID;
-            uint32_t    creator_revision;
+            uint32_t length;
+            uint8_t  revision;
+            uint8_t  checksum;
+            char     OEMID[6];
+            char     OEM_table_ID[8];
+            uint32_t OEM_revision;
+            uint32_t creator_ID;
+            uint32_t creator_revision;
         } __packed;
 
         struct RSDT : public SDTHeader {
-            SDTHeader*  other_sdts[];
+            SDTHeader* other_sdts[];
         } __packed;
 
         struct XSDT : public SDTHeader {
-            uint64_t    other_sdts[];
+            uint64_t other_sdts[];
         } __packed;
 
         struct RSDP1 {
-            char        signature[8];
-            uint8_t     checksum;
-            char        OEMID[6];
-            uint8_t     revision;
-            uint32_t    rsdt_address;
+            char     signature[8];
+            uint8_t  checksum;
+            char     OEMID[6];
+            uint8_t  revision;
+            uint32_t rsdt_address;
         } __packed;
 
         struct RSDP2 : public RSDP1 {
-            uint32_t    length;
-            uint64_t    xsdt_address;
-            uint8_t     extendedChecksum;
-            uint8_t     reserved[3];
+            uint32_t length;
+            uint64_t xsdt_address;
+            uint8_t  extendedChecksum;
+            uint8_t  reserved[3];
         } __packed;
 
         static void init() {
@@ -79,7 +79,8 @@ class acpi {
             }
 
             // Map rest of SDT data
-            mm::vmm::map_pages((uint32_t)rsdt, (uint32_t)rsdt, rsdt->length / mm::PAGE_SIZE, mm::Flags::Present | mm::Flags::Writable);
+            mm::vmm::map_pages((uint32_t)rsdt, (uint32_t)rsdt, rsdt->length / mm::PAGE_SIZE,
+                mm::Flags::Present | mm::Flags::Writable);
         }
 
         template<typename T>
@@ -91,7 +92,7 @@ class acpi {
                 return nullptr;
 
             if (rsdp->revision >= 2) {
-                XSDT* root = (XSDT*)rsdt;
+                XSDT*  root        = (XSDT*)rsdt;
                 size_t entry_count = (root->length - sizeof(SDTHeader)) / sizeof(uint64_t);
 
                 for (size_t i = 0; i < entry_count; ++i) {
@@ -100,7 +101,7 @@ class acpi {
                         return (T*)header;
                 }
             } else {
-                RSDT* root = (RSDT*)rsdt;
+                RSDT*  root        = (RSDT*)rsdt;
                 size_t entry_count = (root->length - sizeof(SDTHeader)) / sizeof(uint32_t);
 
                 for (size_t i = 0; i < entry_count; ++i) {

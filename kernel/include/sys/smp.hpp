@@ -8,7 +8,7 @@
 #include <driver/pit.hpp>
 #include <sys/apic.hpp>
 
-__extern_c uint8_t stack[4096];             // BSP stack
+__extern_c uint8_t  stack[4096];            // BSP stack
 
 __extern_c gdt::Ptr smp_gdt_ptr;
 __extern_c idt::Ptr smp_idt_ptr;
@@ -23,7 +23,7 @@ namespace smp {
             const uint8_t id;   // Logical ID
             const uint8_t apic_id;
 
-            Core(uint8_t apic_id) 
+            Core(uint8_t apic_id)
                 : id(next_core_id++), apic_id(apic_id), stack_size(0), stack_base(0) {}
 
             void start() {
@@ -38,8 +38,8 @@ namespace smp {
                     return;
                 }
 
-                stack_size = 0x1000;
-                stack_base = new uint8_t[stack_size];
+                stack_size    = 0x1000;
+                stack_base    = new uint8_t[stack_size];
 
                 smp_stack_top = (uint32_t)stack_base + stack_size;
 
@@ -63,17 +63,17 @@ namespace smp {
                     They equal to BSP's GDT, IDT and Paging
                 */
                 kstd::init_fpu();
-            
+
                 initialized = true;
                 LOG_INFO("Core %d is ready\n", id);
                 _pause(); // Go to sleep
             }
 
             static void _pause() {
-                INLINE_ASSEMBLY(
-                    "1:\n"
-                    "    pause\n"
-                    "    jmp 1b\n"
+                __asm__ volatile (
+                     "1:\n"
+                     "    pause\n"
+                     "    jmp 1b\n"
                 );
             }
 
@@ -88,5 +88,5 @@ namespace smp {
 
     Core* get_core(uint8_t apic_id);
     Core* current_core();
-    void init();
+    void  init();
 };

@@ -22,7 +22,7 @@
 #include <log.hpp>
 
 static multiboot_info_t mboot_saved;
-KernelAPI api;
+KernelAPI               api;
 
 EXPORT_SYMBOL("api", api);
 
@@ -78,15 +78,15 @@ void kernel_main(multiboot_info_t*) {
     EarlyDisplay::printf("Leaving kernel_main\n");
 
     sched::Scheduler::get()->create_task("task1", []() {
-        while (true) {
-            LOG_INFO("Task 1 running\n");
-            pit::sleep_us(1000 * 1000);
-        }
-    });
+            while (true) {
+                LOG_INFO("Task 1 running\n");
+                pit::sleep_us(1000 * 1000);
+            }
+        });
 
     sched::Scheduler::get()->create_task("task2", []() {
-        LOG_INFO("Task 2 running\n");
-    });
+            LOG_INFO("Task 2 running\n");
+        });
 
     pit::sleep_us(2 * 1000 * 1000);
 }
@@ -117,11 +117,11 @@ __extern_c {
     }
 
     void init_api() {
-        api.kmalloc    = &_kmalloc;
-        api.kfree      = &_kfree;
-        api.get_ticks  = &_get_ticks;
-        api.putc       = &_putc;
-        api.panic      = &_panic;
+        api.kmalloc   = &_kmalloc;
+        api.kfree     = &_kfree;
+        api.get_ticks = &_get_ticks;
+        api.putc      = &_putc;
+        api.panic     = &_panic;
     }
 
     void kernel_early_main(multiboot_info_t* mboot, uint32_t magic) {
@@ -134,7 +134,8 @@ __extern_c {
         EarlyDisplay::clear();
 
         if (magic != MULTIBOOT_BOOTLOADER_MAGIC) {
-            LOG_INFO("[boot] Invalid bootloader magic number: 0x%08x (should be 0x%08x)\n", magic, MULTIBOOT_BOOTLOADER_MAGIC);
+            LOG_INFO("[boot] Invalid bootloader magic number: 0x%08x (should be 0x%08x)\n", magic,
+                MULTIBOOT_BOOTLOADER_MAGIC);
             __unreachable();
         }
 
@@ -176,7 +177,7 @@ __extern_c {
         Heap::get_kernel_heap()->create(0x01000000, HEAP_MIN_SIZE, 0x02000000, mm::Present | mm::Writable);
 
         multiboot_module_t* mod = (multiboot_module_t*)mboot_saved.mods_addr;
-        uint32_t mod_count = mboot_saved.mods_count;
+        uint32_t mod_count      = mboot_saved.mods_count;
 
         for (uint32_t i = 0; i < mod_count; i++) {
             ModuleManager::get()->registerModule((void*)mod->mod_start);

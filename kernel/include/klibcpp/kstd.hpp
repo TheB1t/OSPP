@@ -10,7 +10,7 @@
 namespace kstd {
     struct stack_frame {
         stack_frame* ebp;
-        uint32_t eip;
+        uint32_t     eip;
     };
 
     void _panic(const char* msg);
@@ -36,13 +36,13 @@ namespace kstd {
         }
 
         float convert(float value, Unit from, Unit to);
-        Unit bestUnit(float value);
+        Unit  bestUnit(float value);
     }
 
     inline void atexit(void (*func)()) {
         auto wrapper = [](void* func_ptr) {
-            reinterpret_cast<void (*)()>(func_ptr)();
-        };
+                reinterpret_cast<void (*)()>(func_ptr)();
+            };
 
         __cxa_atexit(wrapper, reinterpret_cast<void*>(func), nullptr);
     }

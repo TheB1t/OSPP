@@ -18,11 +18,11 @@ class ports {
             T ret;
 
             if constexpr (kstd::is_same_v<T, uint8_t>)
-                INLINE_ASSEMBLY("inb %%dx, %%al" : "=a"(ret) : "d"(port));
+                __asm__ volatile ("inb %%dx, %%al" : "=a" (ret) : "d" (port));
             else if constexpr (kstd::is_same_v<T, uint16_t>)
-                INLINE_ASSEMBLY("inw %%dx, %%ax" : "=a"(ret) : "d"(port));
+                __asm__ volatile ("inw %%dx, %%ax" : "=a" (ret) : "d" (port));
             else if constexpr (kstd::is_same_v<T, uint32_t>)
-                INLINE_ASSEMBLY("inl %%dx, %%eax" : "=a"(ret) : "d"(port));
+                __asm__ volatile ("inl %%dx, %%eax" : "=a" (ret) : "d" (port));
 
             return ret;
         }
@@ -37,11 +37,11 @@ class ports {
             );
 
             if constexpr (kstd::is_same_v<T, uint8_t>)
-                INLINE_ASSEMBLY("outb %%al, %%dx" : : "a"(data), "d"(port));
+                __asm__ volatile ("outb %%al, %%dx" : : "a" (data), "d" (port));
             else if constexpr (kstd::is_same_v<T, uint16_t>)
-                INLINE_ASSEMBLY("outw %%ax, %%dx" : : "a"(data), "d"(port));
+                __asm__ volatile ("outw %%ax, %%dx" : : "a" (data), "d" (port));
             else if constexpr (kstd::is_same_v<T, uint32_t>)
-                INLINE_ASSEMBLY("outl %%eax, %%dx" : : "a"(data), "d"(port));
+                __asm__ volatile ("outl %%eax, %%dx" : : "a" (data), "d" (port));
         }
 
         // Explicit size variants
@@ -86,7 +86,7 @@ class ports {
             }
         };
 
-        using Port8 = Port<uint8_t>;
+        using Port8  = Port<uint8_t>;
         using Port16 = Port<uint16_t>;
         using Port32 = Port<uint32_t>;
 };

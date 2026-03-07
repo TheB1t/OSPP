@@ -19,11 +19,11 @@
 */
 
 struct list_head {
-    struct list_head *next, *prev;
+    struct list_head* next, * prev;
 };
 
-#define LIST_GET_HEAD(l) (&(l)->head)
-#define LIST_GET_LIST(l) (&(l)->list)
+#define LIST_GET_HEAD(l)     (&(l)->head)
+#define LIST_GET_LIST(l)     (&(l)->list)
 
 #define LIST_HEAD_INIT(name) { &(name), &(name) }
 
@@ -40,10 +40,9 @@ struct list_head {
 * This is only for internal list manipulation where we know
 * the prev/next entries already!
 */
-static inline void __list_add(struct list_head *_new,
-                              struct list_head *prev,
-                              struct list_head *next)
-{
+static inline void __list_add(struct list_head* _new,
+    struct list_head* prev,
+    struct list_head* next) {
     next->prev = _new;
     _new->next = next;
     _new->prev = prev;
@@ -58,8 +57,7 @@ static inline void __list_add(struct list_head *_new,
 * Insert a new entry after the specified head.
 * This is good for implementing stacks.
 */
-static inline void list_add(struct list_head *_new, struct list_head *head)
-{
+static inline void list_add(struct list_head* _new, struct list_head* head) {
     __list_add(_new, head, head->next);
 }
 
@@ -71,8 +69,7 @@ static inline void list_add(struct list_head *_new, struct list_head *head)
 * Insert a new entry before the specified head.
 * This is useful for implementing queues.
 */
-static inline void list_add_tail(struct list_head *_new, struct list_head *head)
-{
+static inline void list_add_tail(struct list_head* _new, struct list_head* head) {
     __list_add(_new, head->prev, head);
 }
 
@@ -83,8 +80,7 @@ static inline void list_add_tail(struct list_head *_new, struct list_head *head)
 * This is only for internal list manipulation where we know
 * the prev/next entries already!
 */
-static inline void __list_del(struct list_head *prev, struct list_head *next)
-{
+static inline void __list_del(struct list_head* prev, struct list_head* next) {
     next->prev = prev;
     prev->next = next;
 }
@@ -94,13 +90,11 @@ static inline void __list_del(struct list_head *prev, struct list_head *next)
 * @entry: the element to delete from the list.
 * Note: list_empty on entry does not return true after this, the entry is in an undefined state.
 */
-static inline void __list_del_entry(struct list_head *entry)
-{
+static inline void __list_del_entry(struct list_head* entry) {
     __list_del(entry->prev, entry->next);
 }
 
-static inline void list_del(struct list_head *entry)
-{
+static inline void list_del(struct list_head* entry) {
     __list_del(entry->prev, entry->next);
     entry->next = 0;
     entry->prev = 0;
@@ -110,8 +104,7 @@ static inline void list_del(struct list_head *entry)
 * list_del_init - deletes entry from list and reinitialize it.
 * @entry: the element to delete from the list.
 */
-static inline void list_del_init(struct list_head *entry)
-{
+static inline void list_del_init(struct list_head* entry) {
     __list_del(entry->prev, entry->next);
     INIT_LIST_HEAD(entry);
 }
@@ -121,8 +114,7 @@ static inline void list_del_init(struct list_head *entry)
 * @list: the entry to move
 * @head: the head that will precede our entry
 */
-static inline void list_move(struct list_head *list, struct list_head *head)
-{
+static inline void list_move(struct list_head* list, struct list_head* head) {
     __list_del(list->prev, list->next);
     list_add(list, head);
 }
@@ -132,9 +124,8 @@ static inline void list_move(struct list_head *list, struct list_head *head)
 * @list: the entry to move
 * @head: the head that will follow our entry
 */
-static inline void list_move_tail(struct list_head *list,
-                                  struct list_head *head)
-{
+static inline void list_move_tail(struct list_head* list,
+    struct list_head* head) {
     __list_del(list->prev, list->next);
     list_add_tail(list, head);
 }
@@ -143,8 +134,7 @@ static inline void list_move_tail(struct list_head *list,
 * list_empty - tests whether a list is empty
 * @head: the list to test.
 */
-static inline int list_empty(struct list_head *head)
-{
+static inline int list_empty(struct list_head* head) {
     return head->next == head || head->next == (void*)0;
 }
 
@@ -152,10 +142,9 @@ static inline int list_empty(struct list_head *head)
 * list_size - get the number of entries in list
 * @head: the list to get the size of
 */
-static inline int list_size(struct list_head *head)
-{
-    int size = 0;
-    struct list_head *p = head->next;
+static inline int list_size(struct list_head* head) {
+    int               size = 0;
+    struct list_head* p    = head->next;
 
     while (p != head) {
         size++;

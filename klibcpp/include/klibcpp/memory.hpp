@@ -39,7 +39,7 @@ namespace kstd {
             shared_ptr& operator=(shared_ptr&& other) noexcept {
                 if (this != &other) {
                     release();
-                    block = other.block;
+                    block       = other.block;
                     other.block = nullptr;
                 }
                 return *this;
@@ -84,7 +84,7 @@ namespace kstd {
 
         private:
             struct ptr_block {
-                T* ptr;
+                T*       ptr;
                 uint32_t refcount;
             };
 

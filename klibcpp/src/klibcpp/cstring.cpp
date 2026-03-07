@@ -12,14 +12,14 @@ uint32_t strlen(const char str[]) {
     return len - 1;
 }
 
-void strcpy(char *dst, const char *src) {
+void strcpy(char* dst, const char* src) {
     uint32_t len = strlen(src);
     for (uint32_t i = 0; i < len; i++)
         *dst++ = *src++;
     *dst = '\0';
 }
 
-void strncpy(char *dst, const char *src, uint32_t max) {
+void strncpy(char* dst, const char* src, uint32_t max) {
     uint32_t i = 0;
     for (; i < max && src[i] != '\0'; ++i)
         dst[i] = src[i];
@@ -28,7 +28,7 @@ void strncpy(char *dst, const char *src, uint32_t max) {
         dst[i] = '\0';
 }
 
-int strcmp(const char *s1, const char *s2) {
+int strcmp(const char* s1, const char* s2) {
     while (*s1 && (*s1 == *s2)) {
         ++s1;
         ++s2;
@@ -37,7 +37,7 @@ int strcmp(const char *s1, const char *s2) {
     return (int)((uint8_t)*s1) - (int)((uint8_t)*s2);
 }
 
-int strncmp(const char *s1, const char *s2, uint32_t len) {
+int strncmp(const char* s1, const char* s2, uint32_t len) {
     for (uint32_t i = 0; i < len; i++) {
         const uint8_t c1 = (uint8_t)s1[i];
         const uint8_t c2 = (uint8_t)s2[i];
@@ -52,7 +52,7 @@ int strncmp(const char *s1, const char *s2, uint32_t len) {
 
 const char* strrchr(const char* str, int ch) {
     const char* last_occurrence = nullptr;
-    char target = static_cast<char>(ch);
+    char        target          = static_cast<char>(ch);
 
     while (*str != '\0') {
         if (*str == target) {
@@ -113,7 +113,7 @@ char* strtok(char* str, const char* delim) {
 
 int sprintf(char* buffer, const char* format, ...) {
     BufferOutputter out(buffer);
-    va_list args;
+    va_list         args;
     va_start(args, format);
     _vprintf(out.sink(), format, args);
     va_end(args);
@@ -122,7 +122,7 @@ int sprintf(char* buffer, const char* format, ...) {
 
 int snprintf(char* buffer, size_t size, const char* format, ...) {
     BufferOutputterWithSize out(buffer, size);
-    va_list args;
+    va_list                 args;
     va_start(args, format);
     _vprintf(out.sink(), format, args);
     va_end(args);
@@ -131,7 +131,7 @@ int snprintf(char* buffer, size_t size, const char* format, ...) {
 
 void reverse(char str[]) {
     uint32_t start_index = 0;
-    uint32_t end_index = 0;
+    uint32_t end_index   = 0;
     if (strlen(str) > 0) {
         end_index = strlen(str) - 1;
     }
@@ -143,9 +143,9 @@ void reverse(char str[]) {
     // And then put the char in temp buffer in the space at end_index
     // And finally decrement end_index and increment start_index
     while (start_index < end_index) {
-        temp_buffer = str[start_index];
+        temp_buffer      = str[start_index];
         str[start_index] = str[end_index];
-        str[end_index] = temp_buffer;
+        str[end_index]   = temp_buffer;
         start_index++;
         end_index--;
     }
@@ -157,21 +157,22 @@ void _vtoa(char* result, uint32_t base, int32_t value) {
         return;
     }
 
-    char *ptr = result, *ptr1 = result, tmp_char;
-    int tmp_value;
+    char* ptr = result, * ptr1 = result, tmp_char;
+    int   tmp_value;
 
     do {
         tmp_value = value;
-        value /= base;
-        *ptr++ = "zyxwvutsrqponmlkjihgfedcba9876543210123456789abcdefghijklmnopqrstuvwxyz"[35 + (tmp_value - value * base)];
+        value    /= base;
+        *ptr++    = "zyxwvutsrqponmlkjihgfedcba9876543210123456789abcdefghijklmnopqrstuvwxyz"[35 +
+                (tmp_value - value * base)];
     } while (value);
 
     if (tmp_value < 0) *ptr++ = '-';
     *ptr-- = '\0';
     while (ptr1 < ptr) {
         tmp_char = *ptr;
-        *ptr-- = *ptr1;
-        *ptr1++ = tmp_char;
+        *ptr--   = *ptr1;
+        *ptr1++  = tmp_char;
     }
 }
 
@@ -181,9 +182,9 @@ static void _uvtoa(char* result, uint32_t base, uint32_t value) {
         return;
     }
 
-    char* ptr = result;
+    char* ptr  = result;
     char* ptr1 = result;
-    char tmp_char;
+    char  tmp_char;
 
     do {
         uint32_t tmp_value = value;
@@ -194,8 +195,8 @@ static void _uvtoa(char* result, uint32_t base, uint32_t value) {
     *ptr-- = '\0';
     while (ptr1 < ptr) {
         tmp_char = *ptr;
-        *ptr-- = *ptr1;
-        *ptr1++ = tmp_char;
+        *ptr--   = *ptr1;
+        *ptr1++  = tmp_char;
     }
 }
 
@@ -225,7 +226,7 @@ void ftoa(float in, char str[], uint32_t precision) {
     char* p = str;
     if (in < 0) {
         *p++ = '-';
-        in = -in;
+        in   = -in;
     }
 
     if (precision > 0) {
@@ -235,10 +236,10 @@ void ftoa(float in, char str[], uint32_t precision) {
         in += rounding;
     }
 
-    unsigned long intPart = (unsigned long)in;
-    float fracPart = in - (float)intPart;
+    unsigned long intPart  = (unsigned long)in;
+    float         fracPart = in - (float)intPart;
 
-    char temp[20];
+    char          temp[20];
     utoa(intPart, temp);
 
     for (char* t = temp; *t; ++t) {
@@ -250,7 +251,7 @@ void ftoa(float in, char str[], uint32_t precision) {
         for (uint32_t i = 0; i < precision; ++i) {
             fracPart *= 10.0;
             int digit = (int)fracPart;
-            *p++ = '0' + digit;
+            *p++      = '0' + digit;
             fracPart -= digit;
         }
     }
@@ -258,29 +259,29 @@ void ftoa(float in, char str[], uint32_t precision) {
     *p = '\0';
 }
 
-void strcat(char *dst, const char *src) {
-    char *end = dst + strlen(dst);
+void strcat(char* dst, const char* src) {
+    char* end = dst + strlen(dst);
 
     while (*src != '\0') *end++ = *src++;
     *end = '\0';
 }
 
-void memcpy(uint8_t *dst, uint8_t *src, uint32_t count) {
+void memcpy(uint8_t* dst, uint8_t* src, uint32_t count) {
     for (uint32_t i = 0; i<count; i++)
         *dst++ = *src++;
 }
 
-void memcpy32(uint32_t *dst, uint32_t *src, uint32_t count) {
+void memcpy32(uint32_t* dst, uint32_t* src, uint32_t count) {
     for (uint32_t i = 0; i<count; i++)
         *dst++ = *src++;
 }
 
-void memset(uint8_t *dst, uint8_t data, uint32_t count) {
+void memset(uint8_t* dst, uint8_t data, uint32_t count) {
     for (uint32_t i = 0; i<count; i++)
         *dst++ = data;
 }
 
-void memset32(uint32_t *dst, uint32_t data, uint32_t count) {
+void memset32(uint32_t* dst, uint32_t data, uint32_t count) {
     for (uint32_t i = 0; i<count; i++)
         *dst++ = data;
 }

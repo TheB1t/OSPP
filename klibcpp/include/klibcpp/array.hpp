@@ -6,12 +6,12 @@ namespace kstd {
     template <typename T, size_t N>
     struct array {
         T data[N];
-        
+
         constexpr T& operator[](size_t i) {
-            return data[i]; 
+            return data[i];
         }
 
-        constexpr const T& operator[](size_t i) const { 
+        constexpr const T& operator[](size_t i) const {
             return data[i];
         }
 

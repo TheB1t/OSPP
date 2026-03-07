@@ -9,7 +9,7 @@ static void put_string(OutputSink& out, const char* str, int width, bool padRigh
     if (!str)
         str = "(null)";
 
-    const int len = (int)strlen(str);
+    const int len     = (int)strlen(str);
     const int padding = width > len ? width - len : 0;
 
     if (!padRight)
@@ -40,10 +40,10 @@ void _vprintf(OutputSink& out, const char* format, va_list args) {
             continue;
         }
 
-        bool padRight = false;
-        char sym = ' ';
-        int width = 0;
-        int precision = -1;
+        bool padRight  = false;
+        char sym       = ' ';
+        int  width     = 0;
+        int  precision = -1;
 
         if (*format == '-') {
             padRight = true;

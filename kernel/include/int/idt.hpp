@@ -12,9 +12,9 @@ namespace idt {
     } __packed;
 
     struct InterruptContext {
-        uint32_t ds, es, fs, gs;
-        uint32_t edi, esi, ebp, esp, ebx, edx, ecx, eax;
-        uint32_t int_no, err_code;
+        uint32_t             ds, es, fs, gs;
+        uint32_t             edi, esi, ebp, esp, ebx, edx, ecx, eax;
+        uint32_t             int_no, err_code;
 
         BaseInterruptContext base;
 
@@ -51,83 +51,83 @@ namespace idt {
 #pragma GCC push_options
 // Disable SSE/MMX/FPU
 #pragma GCC target ("general-regs-only")
-    template<int N>
-    __interrupt void isr_wrapper_no_err(void* ctx) {
-        idt::isr_handler(N, 0, false,ctx);
-    }
+template<int N>
+__interrupt void isr_wrapper_no_err(void* ctx) {
+    idt::isr_handler(N, 0, false,ctx);
+}
 
-    template<int N>
-    __interrupt void isr_wrapper_err(void* ctx, uint32_t err) {
-        idt::isr_handler(N, err, false, ctx);
-    }
+template<int N>
+__interrupt void isr_wrapper_err(void* ctx, uint32_t err) {
+    idt::isr_handler(N, err, false, ctx);
+}
 
-    template<int N>
-    __naked void context_switch() {
-        INLINE_ASSEMBLY(
-            "push $0\n"                     // push err_code
-            "push %[int_no]\n"              // push int_no
+template<int N>
+__naked void context_switch() {
+    __asm__ volatile (
+         "push $0\n"                             // push err_code
+         "push %[int_no]\n"                      // push int_no
 
-            "pusha\n"
+         "pusha\n"
 
-            "xor %%eax, %%eax\n"
+         "xor %%eax, %%eax\n"
 
-            "mov %%gs, %%ax\n"
-            "push %%eax\n"
+         "mov %%gs, %%ax\n"
+         "push %%eax\n"
 
-            "mov %%fs, %%ax\n"
-            "push %%eax\n"
+         "mov %%fs, %%ax\n"
+         "push %%eax\n"
 
-            "mov %%es, %%ax\n"
-            "push %%eax\n"
+         "mov %%es, %%ax\n"
+         "push %%eax\n"
 
-            "mov %%ds, %%ax\n"
-            "push %%eax\n"
+         "mov %%ds, %%ax\n"
+         "push %%eax\n"
 
-            "mov $0x10, %%ax\n"
-            "mov %%ax, %%ds\n"
-            "mov %%ax, %%es\n"
-            "mov %%ax, %%fs\n"
-            "mov %%ax, %%gs\n"
+         "mov $0x10, %%ax\n"
+         "mov %%ax, %%ds\n"
+         "mov %%ax, %%es\n"
+         "mov %%ax, %%fs\n"
+         "mov %%ax, %%gs\n"
 
-            "mov %%esp, %%eax\n"
-            "add %[base_offset], %%eax\n"   // eax = &BaseInterruptContext
+         "mov %%esp, %%eax\n"
+         "add %[base_offset], %%eax\n"           // eax = &BaseInterruptContext
 
-            "push %%eax\n"                  // ctx = &BaseInterruptContext
-            "push $1\n"                     // has_ext = true
-            "push $0\n"                     // err = 0
-            "push %[int_no]\n"              // int_no = N
+         "push %%eax\n"                          // ctx = &BaseInterruptContext
+         "push $1\n"                             // has_ext = true
+         "push $0\n"                             // err = 0
+         "push %[int_no]\n"                      // int_no = N
 
-            "mov %[handler], %%eax\n"       // eax = &idt::isr_handler
-            "call *%%eax\n"                 // call idt::isr_handler(N, 0, true, &BaseInterruptContext)
+         "mov %[handler], %%eax\n"               // eax = &idt::isr_handler
+         "call *%%eax\n"                         // call idt::isr_handler(N, 0, true, &BaseInterruptContext)
 
-            "add $16, %%esp\n"              // pop args, 4 * 4 = 16
+         "add $16, %%esp\n"                      // pop args, 4 * 4 = 16
 
-            "xor %%eax, %%eax\n"
+         "xor %%eax, %%eax\n"
 
-            "pop %%eax\n"
-            "mov %%ax, %%ds\n"
+         "pop %%eax\n"
+         "mov %%ax, %%ds\n"
 
-            "pop %%eax\n"
-            "mov %%ax, %%es\n"
+         "pop %%eax\n"
+         "mov %%ax, %%es\n"
 
-            "pop %%eax\n"
-            "mov %%ax, %%fs\n"
+         "pop %%eax\n"
+         "mov %%ax, %%fs\n"
 
-            "pop %%eax\n"
-            "mov %%ax, %%gs\n"
+         "pop %%eax\n"
+         "mov %%ax, %%gs\n"
 
-            "popa\n"
+         "popa\n"
 
-            "add $8, %%esp\n"               // pop err_code, int_no
+         "add $8, %%esp\n"                       // pop err_code, int_no
 
-            "iret\n"
-            :
-            : [int_no] "i" (N),
-              [base_offset] "i" (__builtin_offsetof(idt::InterruptContext, base)),
-              [handler] "i" (&idt::isr_handler)
-            : "memory", "eax"
-        );
-    }
+         "iret\n"
+         :
+         : [int_no] "i" (N),
+           [base_offset] "i" (__builtin_offsetof(idt::InterruptContext, base)),
+           [handler] "i" (&idt::isr_handler)
+         : "memory", "eax"
+    );
+}
 #pragma GCC pop_options
 
 namespace idt {
@@ -144,8 +144,8 @@ namespace idt {
 
     template <size_t... IntNums>
     constexpr auto make_isr_table_impl(kstd::index_sequence<IntNums...>) {
-        return kstd::array<uint32_t, sizeof...(IntNums)>{{ 
-            get_isr_wrapper<IntNums>()... 
+        return kstd::array<uint32_t, sizeof...(IntNums)>{{
+            get_isr_wrapper<IntNums>()...
         }};
     }
 
@@ -154,12 +154,12 @@ namespace idt {
     struct Entry {
         uint16_t offset_low;
         uint16_t selector;
-        uint8_t zero;
-        uint8_t type_attr;
+        uint8_t  zero;
+        uint8_t  type_attr;
         uint16_t offset_high;
-        
+
         void set_offset(uint32_t offset) {
-            offset_low = offset & 0xFFFF;
+            offset_low  = offset & 0xFFFF;
             offset_high = (offset >> 16) & 0xFFFF;
         }
     } __packed;
@@ -170,15 +170,15 @@ namespace idt {
     } __packed;
 
     enum Flags {
-        PRESENT = 0x80,
-        RING0 = 0x00,
-        RING3 = 0x60,
+        PRESENT        = 0x80,
+        RING0          = 0x00,
+        RING3          = 0x60,
         INTERRUPT_GATE = 0x0E,
-        TRAP_GATE = 0x0F
+        TRAP_GATE      = 0x0F
     };
 
     extern Entry entries[256];
-    extern Ptr ptr;
+    extern Ptr   ptr;
 
     static constexpr const char* exception_messages[] = {
         "Division by zero",
@@ -221,8 +221,8 @@ namespace idt {
         "ATA2",
     };
 
-    using ISRHandler = void(*)(uint32_t, bool, BaseInterruptContext*);
-    using IRQHandler = void(*)(bool, BaseInterruptContext*);
+    using ISRHandler = void (*)(uint32_t, bool, BaseInterruptContext*);
+    using IRQHandler = void (*)(bool, BaseInterruptContext*);
 
     void init();
     void register_isr(uint8_t vector, ISRHandler handler);

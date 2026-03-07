@@ -1,9 +1,10 @@
 #include <driver/early_display.hpp>
 #include <io/ports.hpp>
 
-volatile EarlyDisplay::VGAEntry* const EarlyDisplay::framebuffer = reinterpret_cast<volatile EarlyDisplay::VGAEntry*>(0xB8000);
-EarlyDisplay::Cursor EarlyDisplay::cursor = {0, 0};
-uint8_t EarlyDisplay::attr = 0x0F;
+volatile EarlyDisplay::VGAEntry* const EarlyDisplay::framebuffer =
+    reinterpret_cast<volatile EarlyDisplay::VGAEntry*>(0xB8000);
+EarlyDisplay::Cursor EarlyDisplay::cursor{0, 0};
+uint8_t              EarlyDisplay::attr = 0x0F;
 
 void EarlyDisplay::set_fg(uint8_t color) {
     attr &= 0xF0;
@@ -78,5 +79,5 @@ void EarlyDisplay::move_cursor() {
 void EarlyDisplay::fb_put(uint8_t x, uint8_t y, char c) {
     uint16_t index = y * width + x;
     framebuffer[index].symbol = c;
-    framebuffer[index].attr = attr;
+    framebuffer[index].attr   = attr;
 }

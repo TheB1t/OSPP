@@ -20,24 +20,24 @@
 */
 
 namespace mm {
-    static constexpr uint32_t PDE_BASE = 0xFFFFF000;
-    static constexpr uint32_t PT_BASE  = 0xFFC00000;
+    static constexpr uint32_t PDE_BASE  = 0xFFFFF000;
+    static constexpr uint32_t PT_BASE   = 0xFFC00000;
     static constexpr uint32_t PAGE_MASK = 0xFFFFF000;
 
     enum Flags : uint32_t {
-        All             = 0,
-        Present         = 1 << 0,
-        Writable        = 1 << 1,
-        User            = 1 << 2,
-        WriteThrough    = 1 << 3,
-        CacheDisabled   = 1 << 4,
-        Accessed        = 1 << 5,
-        Dirty           = 1 << 6,
-        HugePage        = 1 << 7,
+        All           = 0,
+        Present       = 1 << 0,
+        Writable      = 1 << 1,
+        User          = 1 << 2,
+        WriteThrough  = 1 << 3,
+        CacheDisabled = 1 << 4,
+        Accessed      = 1 << 5,
+        Dirty         = 1 << 6,
+        HugePage      = 1 << 7,
     };
 
     struct Entry {
-        uint32_t value = 0;
+        uint32_t                  value        = 0;
 
         static constexpr uint32_t ADDRESS_MASK = 0xFFFFF000;
         static constexpr uint32_t FLAGS_MASK   = 0x00000FFF;
@@ -110,7 +110,7 @@ namespace mm {
         struct Accessor<PTE> {
             static Entry& get(uint32_t virt_addr) {
                 uint32_t pd_index = Index<PDE>::index(virt_addr);
-                Entry& pde = *reinterpret_cast<Entry*>(PDE_BASE + pd_index * sizeof(Entry));
+                Entry&   pde      = *reinterpret_cast<Entry*>(PDE_BASE + pd_index * sizeof(Entry));
 
                 if (!pde.has_flag(Present)) {
                     serial::printf("--->>>>>>> Found invalid PDE entry, creating new one\n");
@@ -120,7 +120,7 @@ namespace mm {
                 }
 
                 uint32_t pt_address = PT_BASE + (pd_index << 12);
-                uint32_t pt_index = Index<PTE>::index(virt_addr);
+                uint32_t pt_index   = Index<PTE>::index(virt_addr);
                 return *reinterpret_cast<Entry*>(pt_address + pt_index * sizeof(Entry));
             }
         };
@@ -133,7 +133,7 @@ namespace mm {
 
     static AlignedResult align_address(uint32_t address) {
         return {
-            address & PAGE_MASK,
+            address& PAGE_MASK,
             address & (PAGE_SIZE - 1)
         };
     }
@@ -144,10 +144,10 @@ namespace mm {
 
             static void init() {
                 uint32_t pd_phys = pmm::alloc_page();
-                Entry* pd = reinterpret_cast<Entry*>(pd_phys);
+                Entry*   pd      = reinterpret_cast<Entry*>(pd_phys);
 
                 uint32_t pt_phys = pmm::alloc_page();
-                Entry* pt = reinterpret_cast<Entry*>(pt_phys);
+                Entry*   pt      = reinterpret_cast<Entry*>(pt_phys);
 
                 memset((uint8_t*)pd, 0, PAGE_SIZE);
 
@@ -226,23 +226,23 @@ namespace mm {
             }
 
             static inline void load_directory(uint32_t phys_addr) {
-                INLINE_ASSEMBLY("mov %0, %%cr3" : : "r"(phys_addr) : "memory");
+                __asm__ volatile ("mov %0, %%cr3" : : "r" (phys_addr) : "memory");
             }
 
             static inline void flush_tlb(uint32_t virt_addr) {
-                INLINE_ASSEMBLY("invlpg (%0)" : : "r"(virt_addr) : "memory");
+                __asm__ volatile ("invlpg (%0)" : : "r" (virt_addr) : "memory");
             }
 
             static inline void enable_paging() {
                 uint32_t cr0;
-                INLINE_ASSEMBLY("mov %%cr0, %0" : "=r"(cr0));
+                __asm__ volatile ("mov %%cr0, %0" : "=r" (cr0));
                 cr0 |= 0x80000000;
-                INLINE_ASSEMBLY("mov %0, %%cr0" : : "r" (cr0));
+                __asm__ volatile ("mov %0, %%cr0" : : "r" (cr0));
             }
 
             static void page_fault(uint32_t err_code, bool has_ext, idt::BaseInterruptContext* ctx) {
                 uint32_t cr2;
-                INLINE_ASSEMBLY("mov %%cr2, %0" : "=r"(cr2));
+                __asm__ volatile ("mov %%cr2, %0" : "=r" (cr2));
 
                 const char* err = "Unknown";
 

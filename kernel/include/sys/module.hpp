@@ -9,17 +9,16 @@
 using namespace kstd::ELF32;
 
 struct Module {
-    Linker::Layout* layout;
-
     using entry_t = __cdecl int (*)(void*);
 
-    entry_t enter;
-    entry_t exit;
+    Linker::Layout* layout;
+    entry_t         enter;
+    entry_t         exit;
 };
 
 class ModuleManager {
     public:
-        ModuleManager(const ModuleManager&) = delete;
+        ModuleManager(const ModuleManager&)            = delete;
         ModuleManager& operator=(const ModuleManager&) = delete;
 
         static ModuleManager* get() {
@@ -29,16 +28,20 @@ class ModuleManager {
 
         bool registerModule(void* ptr) {
             Object* obj = Object::create(ptr);
-            if (!obj)
+            if (!obj) {
+                LOG_WARN("[module] Invalid ELF object at 0x%08x\n", ptr);
                 return false;
+            }
 
             Linker::Layout* layout = Linker::get()->load(obj);
 
-            if (!layout)
+            if (!layout) {
+                LOG_WARN("[module] Failed to link module at 0x%08x\n", ptr);
                 return false;
+            }
 
             Module::entry_t enter = reinterpret_cast<Module::entry_t>(layout->find_symbol("module_enter"));
-            Module::entry_t exit =  reinterpret_cast<Module::entry_t>(layout->find_symbol("module_exit"));
+            Module::entry_t exit  = reinterpret_cast<Module::entry_t>(layout->find_symbol("module_exit"));
 
             if (enter)
                 enter((void*)0xdeaddead);

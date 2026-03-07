@@ -4,9 +4,9 @@
 #include <log.hpp>
 
 namespace mm {
-    uint32_t pmm::bitmap[BITMAP_SIZE];
-    uint32_t pmm::used_pages;
-    uint32_t pmm::memory_size;
+    uint32_t           pmm::bitmap[BITMAP_SIZE];
+    uint32_t           pmm::used_pages;
+    uint32_t           pmm::memory_size;
 
     static const char* typeNames[] = { "UNKNOWN", "AVAILABLE", "RESERVED", "ACPI", "NVS", "BAD MEMORY" };
 
@@ -15,7 +15,7 @@ namespace mm {
             return 0;
 
         uint32_t start = align_down(base, PAGE_SIZE);
-        uint32_t end = align_up(base + size, PAGE_SIZE);
+        uint32_t end   = align_up(base + size, PAGE_SIZE);
         return end - start;
     }
 
@@ -23,22 +23,22 @@ namespace mm {
         if (!TEST_MASK(mboot->flags, MULTIBOOT_INFO_MEM_MAP))
             kstd::panic("Bootloader can't store memory map!\n");
 
-        multiboot_memory_map_t* mmap = (multiboot_memory_map_t*)mboot->mmap_addr;
-        uint32_t mmap_end = (uint32_t)mboot->mmap_addr + mboot->mmap_length;
+        multiboot_memory_map_t* mmap     = (multiboot_memory_map_t*)mboot->mmap_addr;
+        uint32_t                mmap_end = (uint32_t)mboot->mmap_addr + mboot->mmap_length;
         memory_size = 0;
-        used_pages = 0;
-        
+        used_pages  = 0;
+
 
         for (uint32_t i = 0; i < BITMAP_SIZE; i++)
             bitmap[i] = 0xFFFFFFFF;
 
         LOG_INFO("[pmm] Memory map provided by bootloader:\n");
         while ((uint32_t)mmap < mmap_end) {
-            uint32_t base = mmap->addr;
+            uint32_t base   = mmap->addr;
             uint32_t length = mmap->len;
-            uint32_t type = mmap->type;
+            uint32_t type   = mmap->type;
 
-            LOG_INFO("   0x%08x - 0x%08x (len 0x%08x) [%s]\n", 
+            LOG_INFO("   0x%08x - 0x%08x (len 0x%08x) [%s]\n",
                 base, base + length, length, typeNames[type]
             );
 
@@ -55,7 +55,8 @@ namespace mm {
         LOG_INFO("[pmm] Mapping kernel memory\n");
         LOG_INFO("- from 0x%08x\n", (uint32_t)&__kernel_start);
         LOG_INFO("- to 0x%08x\n", (uint32_t)&__kernel_end);
-        uint32_t kernel_span = page_aligned_span((uint32_t)&__kernel_start, (uint32_t)&__kernel_end - (uint32_t)&__kernel_start);
+        uint32_t kernel_span = page_aligned_span((uint32_t)&__kernel_start,
+                (uint32_t)&__kernel_end - (uint32_t)&__kernel_start);
         deinit_region((uint32_t)&__kernel_start, kernel_span);
         used_pages += kernel_span / PAGE_SIZE;
 
@@ -95,7 +96,7 @@ namespace mm {
             for (uint32_t j = 0; j < count; j++) {
                 if (test_bit(i + j)) {
                     found = false;
-                    i += j; // Skip ahead to avoid checking overlapping ranges
+                    i    += j; // Skip ahead to avoid checking overlapping ranges
                     break;
                 }
             }

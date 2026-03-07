@@ -12,49 +12,49 @@ namespace kstd {
     };
 
     template <typename T, typename U>
-    struct is_same : false_type{};
+    struct is_same : false_type {};
 
     template <typename T>
-    struct is_same<T, T> : true_type{};
+    struct is_same<T, T> : true_type {};
 
     template <typename T>
-    struct is_int : false_type{};
+    struct is_int : false_type {};
     template <>
-    struct is_int<int> : true_type{};
+    struct is_int<int> : true_type {};
     template <>
-    struct is_int<size_t> : true_type{};
+    struct is_int<size_t> : true_type {};
 
     template <typename T>
-    struct is_32bit_int : false_type{};
+    struct is_32bit_int : false_type {};
     template <>
-    struct is_32bit_int<int> : true_type{};
+    struct is_32bit_int<int> : true_type {};
 
     template <typename T>
-    struct is_64bit_int : false_type{};
+    struct is_64bit_int : false_type {};
     template <>
-    struct is_64bit_int<size_t> : true_type{};
+    struct is_64bit_int<size_t> : true_type {};
     template <>
-    struct is_64bit_int<int64_t> : true_type{};
+    struct is_64bit_int<int64_t> : true_type {};
 
     template <typename T>
-    struct is_void : false_type{};
+    struct is_void : false_type {};
     template <>
-    struct is_void<void> : true_type{};
+    struct is_void<void> : true_type {};
 
     template <typename T>
-    struct is_pointer : false_type{};
+    struct is_pointer : false_type {};
     template <typename T>
-    struct is_pointer<T *> : true_type{};
+    struct is_pointer<T*> : true_type {};
 
     template <typename T>
-    struct is_reference : false_type{};
+    struct is_reference : false_type {};
     template <typename T>
-    struct is_reference<T &> : true_type{};
+    struct is_reference<T&> : true_type {};
 
     template <typename T>
-    struct is_rvalue_reference : false_type{};
+    struct is_rvalue_reference : false_type {};
     template <typename T>
-    struct is_rvalue_reference<T &&> : true_type{};
+    struct is_rvalue_reference<T &&> : true_type {};
 
     template<bool B, typename T = void>
     struct enable_if { };

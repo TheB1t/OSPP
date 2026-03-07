@@ -34,14 +34,14 @@ namespace gdt {
         uint16_t trap;       // Trap flag (IOPL bits)
         uint16_t iomap_base; // I/O permission bitmap offset
         // uint8_t  io_bitmap[8192]; // I/O map (optional)
-        
+
         void initialize() {
-            ss0 = 0x10;
+            ss0        = 0x10;
             iomap_base = sizeof(TSS);
-            trap = 0;
-            cr3 = 0;
+            trap       = 0;
+            cr3        = 0;
         }
-        
+
         void set_kernel_stack(uint32_t stack_top) {
             esp0 = stack_top;
         }
@@ -50,11 +50,11 @@ namespace gdt {
     struct Entry {
         uint16_t limit_low;
         uint16_t base_low;
-        uint8_t base_middle;
-        uint8_t access;
-        uint8_t limit_high_flags;
-        uint8_t base_high;
-        
+        uint8_t  base_middle;
+        uint8_t  access;
+        uint8_t  limit_high_flags;
+        uint8_t  base_high;
+
         constexpr Entry(uint32_t base, uint32_t limit, uint8_t access, uint8_t flags) :
             limit_low(limit & 0xFFFF),
             base_low(base & 0xFFFF),
@@ -87,7 +87,7 @@ namespace gdt {
         KERNEL = RING_0,
         USER   = RING_3,
     };
-    
+
     constexpr uint8_t pack_access(bool is_code, bool rw, bool dc, bool exec, Privilege dpl, bool present) {
         return (present << 7) | (dpl << 5) | (1 << 4) | (exec << 3) | (dc << 2) | (rw << 1) | is_code;
     }
@@ -104,9 +104,9 @@ namespace gdt {
         return Entry(base, limit, access, flags);
     }
 
-    extern TSS bsp_tss;
+    extern TSS   bsp_tss;
     extern Entry bsp_gdt[];
-    extern Ptr bsp_ptr;
+    extern Ptr   bsp_ptr;
 
     template<bool is_bsp>
     void init_core(uint8_t core_id __unused) {

@@ -11,7 +11,7 @@ namespace kstd {
 
         Unit bestUnit(float value) {
             Unit units[] = { Unit::B, Unit::KB, Unit::MB, Unit::GB, Unit::TB };
-            int i = 0;
+            int  i       = 0;
             while (i < 4 && value >= 1024.0) {
                 value /= 1024.0;
                 ++i;
@@ -24,7 +24,7 @@ namespace kstd {
         serial::printf("\n\nKernel panic:\n%s\n", msg);
 
         stack_frame* stk;
-        __asm__ volatile("movl %%ebp, %0" : "=r"(stk));
+        __asm__ volatile ("movl %%ebp, %0" : "=r"(stk));
 
         stack_trace(stk, 10);
         __unreachable();
@@ -48,19 +48,19 @@ namespace kstd {
         uint32_t cr0, cr4;
 
         // Read CR0
-        INLINE_ASSEMBLY("mov %%cr0, %0" : "=r"(cr0));
+        __asm__ volatile ("mov %%cr0, %0" : "=r" (cr0));
         // Clear EM (bit 2), set MP (bit 1)
         cr0 &= ~(1 << 2);  // EM = 0
         cr0 |=  (1 << 1);  // MP = 1
-        INLINE_ASSEMBLY("mov %0, %%cr0" :: "r"(cr0));
+        __asm__ volatile ("mov %0, %%cr0" :: "r" (cr0));
 
         // Read CR4
-        INLINE_ASSEMBLY("mov %%cr4, %0" : "=r"(cr4));
+        __asm__ volatile ("mov %%cr4, %0" : "=r" (cr4));
         // Set OSFXSR (bit 9), OSXMMEXCPT (bit 10) for SSE
         cr4 |= (1 << 9) | (1 << 10);
-        INLINE_ASSEMBLY("mov %0, %%cr4" :: "r"(cr4));
+        __asm__ volatile ("mov %0, %%cr4" :: "r" (cr4));
 
         // Initialize FPU
-        INLINE_ASSEMBLY("fninit");
+        __asm__ volatile ("fninit");
     }
 }

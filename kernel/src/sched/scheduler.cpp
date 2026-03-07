@@ -15,20 +15,19 @@ namespace sched {
 
     Task::Task(uint32_t id, const char* name)
         : id(id), stack_size(0),
-        state(TaskState::READY), name(name)
-    {
+          state(TaskState::READY), name(name) {
         stack_base = 0;
-        stack_ptr = 0;
+        stack_ptr  = 0;
 
         memset((uint8_t*)&ctx, 0, sizeof(idt::InterruptContext));
 
-        ctx.ds = 0x10;
-        ctx.es = 0x10;
-        ctx.fs = 0x10;
-        ctx.gs = 0x10;
+        ctx.ds          = 0x10;
+        ctx.es          = 0x10;
+        ctx.fs          = 0x10;
+        ctx.gs          = 0x10;
 
-        ctx.base.eip = 0;
-        ctx.base.cs = 0x8;
+        ctx.base.eip    = 0;
+        ctx.base.cs     = 0x8;
         ctx.base.eflags = 0x202;
 
         LOG_INFO("Created task %d (%s) without stack\n", id, name);
@@ -36,30 +35,29 @@ namespace sched {
 
     Task::Task(uint32_t id, const char* name, uint32_t stack_size)
         : id(id), stack_size(stack_size),
-        state(TaskState::READY), name(name)
-    {
-        stack_base = (uint32_t)new uint8_t[stack_size];
-        stack_ptr = stack_base + stack_size;
+          state(TaskState::READY), name(name) {
+        stack_base      = (uint32_t) new uint8_t[stack_size];
+        stack_ptr       = stack_base + stack_size;
 
-        ctx.eax = (uint32_t)dummy_func;
-        ctx.ebx = stack_ptr;
-        ctx.ecx = 0;
-        ctx.edx = 0;
-        ctx.esi = 0;
-        ctx.edi = 0;
-        ctx.ebp = 0;
-        ctx.esp = 0;
+        ctx.eax         = (uint32_t)dummy_func;
+        ctx.ebx         = stack_ptr;
+        ctx.ecx         = 0;
+        ctx.edx         = 0;
+        ctx.esi         = 0;
+        ctx.edi         = 0;
+        ctx.ebp         = 0;
+        ctx.esp         = 0;
 
-        ctx.ds = 0x10;
-        ctx.es = 0x10;
-        ctx.fs = 0x10;
-        ctx.gs = 0x10;
+        ctx.ds          = 0x10;
+        ctx.es          = 0x10;
+        ctx.fs          = 0x10;
+        ctx.gs          = 0x10;
 
-        ctx.int_no = 0;
-        ctx.err_code = 0;
+        ctx.int_no      = 0;
+        ctx.err_code    = 0;
 
-        ctx.base.eip = (uint32_t)&Task::_crt_task_entry;
-        ctx.base.cs = 0x8;
+        ctx.base.eip    = (uint32_t)&Task::_crt_task_entry;
+        ctx.base.cs     = 0x8;
         ctx.base.eflags = 0x202;
 
         LOG_INFO("Created task %d (%s) with stack at 0x%08x\n", id, name, stack_base);
@@ -75,7 +73,7 @@ namespace sched {
 
     Scheduler::Scheduler()
         : current_task_index(0), next_task_id(1),
-        initialized(false), time_slice_ms(10)
+          initialized(false), time_slice_ms(10)
     {}
 
     Scheduler::~Scheduler() {
@@ -107,18 +105,18 @@ namespace sched {
         pit::register_handler(timer_tick, this, pit::TimerTrigger::Interval, time_slice_ms * 1000);
 
         idt::register_isr(33, [](uint32_t, bool has_ext, idt::BaseInterruptContext* base_ctx) {
-            if (has_ext) {
-                idt::InterruptContext* ctx = idt::InterruptContext::from_base(base_ctx);
-                get()->schedule(ctx);
-            } else {
-                LOG_WARN("Received rechedule interrupt without extended context!\n");
-            }
-        });
+                if (has_ext) {
+                    idt::InterruptContext* ctx = idt::InterruptContext::from_base(base_ctx);
+                    get()->schedule(ctx);
+                } else {
+                    LOG_WARN("Received rechedule interrupt without extended context!\n");
+                }
+            });
 
         create_task("idle", []() {
-            while (true)
-                __pause;
-        });
+                while (true)
+                    __pause;
+            });
 
         initialized = true;
 

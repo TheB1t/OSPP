@@ -205,6 +205,17 @@ function run_qemu() {
     run qemu-system-i386 -m 1024M -hda ${IMAGE_FILE}.img -no-reboot -no-shutdown ${@}
 }
 
+function format_source() {
+    mapfile -t files < <(git ls-files '*.c' '*.cpp' '*.h' '*.hpp')
+
+    if [ ${#files[@]} -eq 0 ]; then
+        log INFO "No source files to format"
+        return 0
+    fi
+
+    run uncrustify -q -c .uncrustify.cfg --replace --no-backup "${files[@]}"
+}
+
 function main() {
     local action=$1; shift
 
@@ -257,6 +268,9 @@ function main() {
         ;;
     "run_nog")
         run_qemu -serial file:serial.log -machine q35 --cpu max -smp 4 -nographic
+        ;;
+    "format")
+        format_source
         ;;
 	"mount")
         ask_sudo || return 1
@@ -314,6 +328,7 @@ function main() {
         echo "	runb                    : run bochs"
         echo "	burn <drive>            : burn image to drive"
         echo "	init                    : init image"
+        echo "	format                  : format source tree"
         echo "	mount                   : mount image"
         echo "	umount                  : umount image"
         echo "	a2l <addr>              : addr2line"

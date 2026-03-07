@@ -8,8 +8,8 @@
 class EarlyDisplay {
     public:
         struct VGAEntry {
-            uint8_t    symbol;
-            uint8_t    attr;
+            uint8_t symbol;
+            uint8_t attr;
         };
 
         struct Cursor {
@@ -17,21 +17,21 @@ class EarlyDisplay {
             uint8_t y;
         };
 
-        static constexpr uint8_t width = 80;
+        static constexpr uint8_t width  = 80;
         static constexpr uint8_t height = 25;
 
         static void set_fg(uint8_t color);
         static void set_bg(uint8_t color);
         static void clear();
 
-        template<typename ...Args>
+        template<typename... Args>
         static void printf(const char* format, Args&&... args) {
             OutputSink sink_;
 
             sink_.ctx  = nullptr;
             sink_.putc = [](void*, char c) {
-                EarlyDisplay::putc(c);
-            };
+                    EarlyDisplay::putc(c);
+                };
 
             _printf(sink_, format, kstd::forward<Args>(args)...);
         }

@@ -11,10 +11,10 @@ using namespace kstd::ELF32;
 
 class lmm {
     public:
-        static constexpr uint32_t BASE_ADDR = 0xA0000000;
-        static constexpr uint32_t MAX_PAGES = 1 << 8;
+        static constexpr uint32_t BASE_ADDR   = 0xA0000000;
+        static constexpr uint32_t MAX_PAGES   = 1 << 8;
         static constexpr uint32_t BITMAP_SIZE = (MAX_PAGES + 31) / 32;
-        static constexpr uint32_t PAGE_SIZE = mm::PAGE_SIZE;
+        static constexpr uint32_t PAGE_SIZE   = mm::PAGE_SIZE;
 
         lmm() {
             bitmap = new uint32_t[BITMAP_SIZE];
@@ -34,7 +34,7 @@ class lmm {
                 for (uint32_t j = 0; j < count; j++) {
                     if (test_bit(i + j)) {
                         found = false;
-                        i += j; // Skip ahead to avoid checking overlapping ranges
+                        i    += j; // Skip ahead to avoid checking overlapping ranges
                         break;
                     }
                 }
@@ -128,7 +128,7 @@ class Linker {
         struct Region {
             uint32_t base;
             uint32_t size;  // Size in bytes
-            Access access;  // Overall pages access, all sections should have same access
+            Access   access; // Overall pages access, all sections should have same access
 
             uint32_t index;
             Section* section; // Head
@@ -152,7 +152,7 @@ class Linker {
                 }
 
                 s->reg_off = mm::align_up(size, s->align);
-                size = s->reg_off + s->size;
+                size       = s->reg_off + s->size;
             }
 
             ~Region() {
@@ -175,9 +175,9 @@ class Linker {
         struct Layout {
             Object* obj;
             // .text*
-            Region rx;
+            Region  rx;
             // .data* + .bss* + .rodata* + .init/.fini
-            Region rw;
+            Region  rw;
 
             SecMap* map;
 
@@ -220,7 +220,7 @@ class Linker {
             return instance;
         }
 
-        Linker(const Linker&) = delete;
+        Linker(const Linker&)            = delete;
         Linker& operator=(const Linker&) = delete;
 
         Layout* load(Object* obj) {
@@ -228,8 +228,8 @@ class Linker {
 
             memset((uint8_t*)layout, 0, sizeof(Layout));
 
-            layout->rx = { .base = 0, .size=0, .access=Access::RX, .index=0, .section=nullptr };
-            layout->rw = { .base = 0, .size=0, .access=Access::RW, .index=1, .section=nullptr };
+            layout->rx  = { .base = 0, .size = 0, .access = Access::RX, .index = 0, .section = nullptr };
+            layout->rw  = { .base = 0, .size = 0, .access = Access::RW, .index = 1, .section = nullptr };
 
             layout->obj = obj;
 
@@ -277,10 +277,10 @@ class Linker {
                     continue;
 
                 Section* new_sec = new Section {
-                    .access = Access::N,
-                    .kind  = sec->type == SHT_PROGBITS ? SecKind::PROGBITS :
-                             sec->type == SHT_NOBITS ? SecKind::NOBITS :
-                             SecKind::UNKNOWN,
+                    . access     = Access::N,
+                    .kind        = sec->type == SHT_PROGBITS ? SecKind::PROGBITS :
+                        sec->type == SHT_NOBITS ? SecKind::NOBITS :
+                        SecKind::UNKNOWN,
                     .align    = sec->addralign ? sec->addralign : 1,
                     .file_off = sec->offset,
                     .reg_off  = 0,
@@ -370,22 +370,22 @@ class Linker {
                     continue;
 
                 uint16_t target_idx = sec.info;
-                auto& target_map = layout->map[target_idx];
+                auto&    target_map = layout->map[target_idx];
                 if (!target_map.region)
                     continue;
 
                 Rel_t* rel = obj->header_offset<Rel_t*>(sec.offset);
-                size_t n = sec.size / sizeof(Rel_t);
+                size_t n   = sec.size / sizeof(Rel_t);
 
                 for (size_t j = 0; j < n; ++j) {
-                    auto& r = rel[j];
-                    uint32_t type = REL_TYPE(r.info);
-                    uint32_t symi = REL_SYM(r.info);
+                    auto&     r    = rel[j];
+                    uint32_t  type = REL_TYPE(r.info);
+                    uint32_t  symi = REL_SYM(r.info);
 
-                    Symbol_t* sym = obj->symbol_by_index(symi);
-                    uint32_t P = target_map.region->base +
-                                target_map.section->reg_off +
-                                r.offset;
+                    Symbol_t* sym  = obj->symbol_by_index(symi);
+                    uint32_t  P    = target_map.region->base +
+                        target_map.section->reg_off +
+                        r.offset;
                     uint32_t A = *reinterpret_cast<uint32_t*>(P);
                     uint32_t S = 0;
 
@@ -406,7 +406,7 @@ class Linker {
                         }
                         case 0xfff2: {
                             LOG_ERR("COMMON symbol should have been placed into .bss earlier (sym=%.*s)\n",
-                                    /*len=*/32, obj->header_offset<const char*>(obj->strtab->offset)+sym->name);
+                                /*len=*/ 32, obj->header_offset<const char*>(obj->strtab->offset)+sym->name);
                             continue;
                         }
                         default: {

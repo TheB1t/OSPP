@@ -9,14 +9,14 @@ namespace idt {
 
     static void set_entry(uint8_t vector, void (*handler)(), uint8_t flags, uint16_t selector = 0x08) {
         entries[vector].set_offset(reinterpret_cast<uint32_t>(handler));
-        entries[vector].selector = selector;
+        entries[vector].selector  = selector;
         entries[vector].type_attr = flags;
     }
 
     Entry entries[256];
-    Ptr ptr = {
+    Ptr   ptr{
         .limit = sizeof(entries) - 1,
-        .base = reinterpret_cast<uint32_t>(&entries),
+        .base  = reinterpret_cast<uint32_t>(&entries),
     };
 
     void init() {
@@ -24,7 +24,7 @@ namespace idt {
 
         for(int i = 0; i < 256; i++) {
             entries[i].zero = 0;
-            set_entry(i, reinterpret_cast<void(*)()>(isr_table[i]), Flags::PRESENT | Flags::INTERRUPT_GATE);
+            set_entry(i, reinterpret_cast<void (*)()>(isr_table[i]), Flags::PRESENT | Flags::INTERRUPT_GATE);
         }
 
         flush(&ptr);
@@ -52,11 +52,11 @@ namespace idt {
         /*
             TODO:
                 Temporary solution for not blowing things up.
-                But if there a nested interrupt occurs, or 
+                But if there a nested interrupt occurs, or
                 SMP is enabled, this won't work.
         */
         static char fxsave_region[512] __attribute__((aligned(16)));
-        INLINE_ASSEMBLY(" fxsave %0 "::"m"(fxsave_region));
+        __asm__ volatile (" fxsave %0 " ::"m" (fxsave_region));
 
         if(no >= 32 && no < 48) { // IRQ
             uint8_t irq = no - 32;
@@ -77,17 +77,17 @@ namespace idt {
             }
         }
 
-        INLINE_ASSEMBLY(" fxrstor %0 "::"m"(fxsave_region));
+        __asm__ volatile (" fxrstor %0 " ::"m" (fxsave_region));
         apic::get()->EOI();
     }
 
     void flush(const Ptr* idtr) {
-        INLINE_ASSEMBLY(
-            "movl %0, %%eax\n"
-            "lidt (%%eax)\n"
-            :
-            : "r"(idtr)
-            : "eax", "memory"
+        __asm__ volatile (
+             "movl %0, %%eax\n"
+             "lidt (%%eax)\n"
+             :
+             : "r" (idtr)
+             : "eax", "memory"
         );
     }
 }

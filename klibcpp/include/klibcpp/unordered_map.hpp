@@ -10,25 +10,24 @@ namespace kstd {
     class unordered_map {
         public:
             struct Node {
-                K key;
-                V value;
-                Node* next;
+                K        key;
+                V        value;
+                Node*    next;
                 uint32_t hash32;
 
                 Node(const K& in_key, const V& in_val, Node* in_next)
-                    : value(in_val), next(in_next)
-                {
+                    : value(in_val), next(in_next) {
                     if constexpr (kstd::is_same_v<K, const char*> || kstd::is_same_v<K, char*>) {
-                        if (!in_key) { 
-                            key = nullptr; 
-                            hash32 = 0; 
+                        if (!in_key) {
+                            key    = nullptr;
+                            hash32 = 0;
                             return;
                         }
 
                         const uint32_t len = strlen(in_key);
-                        char* dup = new char[len + 1];
+                        char*          dup = new char[len + 1];
                         memcpy((uint8_t*)dup, (uint8_t*)in_key, len + 1);
-                        key = dup;
+                        key    = dup;
                         hash32 = hash_fold32_cstr(dup);
                     } else {
                         key    = in_key;
@@ -43,7 +42,7 @@ namespace kstd {
 
                 static bool equals(const K& a, const K& b) {
                     if constexpr (kstd::is_same_v<K, const char*> || kstd::is_same_v<K, char*>) {
-                        if (!a || !b) 
+                        if (!a || !b)
                             return a == b;
 
                         return strcmp(a, b) == 0;
@@ -72,13 +71,12 @@ namespace kstd {
             iterator end()   { return iterator(buckets_, capacity_, capacity_, nullptr); }
 
             explicit unordered_map(size_t capacity = 64)
-                : capacity_(capacity), size_(0)
-            {
-                if (capacity_ == 0) 
+                : capacity_(capacity), size_(0) {
+                if (capacity_ == 0)
                     capacity_ = 1;
 
                 buckets_ = new Node*[capacity_];
-                for (size_t i = 0; i < capacity_; ++i) 
+                for (size_t i = 0; i < capacity_; ++i)
                     buckets_[i] = nullptr;
             }
 
@@ -88,7 +86,7 @@ namespace kstd {
             }
 
             bool insert(const K& key, const V& value) {
-                Node* head;
+                Node*    head;
                 uint32_t h, idx;
                 compute_bucket_(key, h, idx, head);
 
@@ -106,7 +104,7 @@ namespace kstd {
             }
 
             bool find(const K& key, V& out_value) const {
-                Node* head;
+                Node*    head;
                 uint32_t h, idx;
                 compute_bucket_const_(key, h, idx, head);
 
@@ -120,7 +118,7 @@ namespace kstd {
             }
 
             bool erase(const K& key) {
-                Node* head;
+                Node*    head;
                 uint32_t h, idx;
                 compute_bucket_(key, h, idx, head);
 
@@ -155,9 +153,9 @@ namespace kstd {
             size_t capacity() const { return capacity_; }
 
         private:
-            Node**   buckets_;
-            size_t   capacity_;
-            size_t   size_;
+            Node** buckets_;
+            size_t capacity_;
+            size_t size_;
 
             void compute_bucket_(const K& key, uint32_t& h, uint32_t& idx, Node*& head) {
                 if constexpr (kstd::is_same_v<K, const char*> || kstd::is_same_v<K, char*>) {

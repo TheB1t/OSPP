@@ -65,8 +65,8 @@ namespace kstd {
 }
 
 __extern_c {
-    void __cxa_pure_virtual() { 
-        kstd::panic("pure virtual call"); 
+    void __cxa_pure_virtual() {
+        kstd::panic("pure virtual call");
     }
 
     static void udivmod_64(uint64_t a, uint64_t b, uint64_t* q, uint64_t* r) {
@@ -80,11 +80,11 @@ __extern_c {
         }
 
         uint64_t quotient = 0;
-        uint64_t rem = 0;
+        uint64_t rem      = 0;
         for (int i = 63; i >= 0; --i) {
             rem = (rem << 1) | ((a >> i) & 1ULL);
             if (rem >= b) {
-                rem -= b;
+                rem      -= b;
                 quotient |= (1ULL << i);
             }
         }

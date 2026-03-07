@@ -15,7 +15,7 @@ namespace kstd {
     template<typename T>
     constexpr uint32_t hash_fold32_trivial(const T& x) {
         const uint8_t* p = reinterpret_cast<const uint8_t*>(&x);
-        uint64_t h = 1469598103934665603ULL;
+        uint64_t       h = 1469598103934665603ULL;
         for (size_t i = 0; i < sizeof(T); ++i) {
             h ^= p[i];
             h *= 1099511628211ULL;

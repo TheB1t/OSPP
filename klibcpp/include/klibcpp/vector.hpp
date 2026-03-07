@@ -13,8 +13,8 @@ namespace kstd {
             size_t capacity_;
 
             void init() {
-                data_ = nullptr;
-                size_ = 0;
+                data_     = nullptr;
+                size_     = 0;
                 capacity_ = 0;
             }
 
@@ -55,8 +55,8 @@ namespace kstd {
 
             vector(vector&& other) noexcept
                 : data_(other.data_), size_(other.size_), capacity_(other.capacity_) {
-                other.data_ = nullptr;
-                other.size_ = 0;
+                other.data_     = nullptr;
+                other.size_     = 0;
                 other.capacity_ = 0;
             }
 
@@ -67,12 +67,12 @@ namespace kstd {
                         ::operator delete(data_, align_val_t(alignof(T)));
                     }
 
-                    data_ = other.data_;
-                    size_ = other.size_;
-                    capacity_ = other.capacity_;
+                    data_           = other.data_;
+                    size_           = other.size_;
+                    capacity_       = other.capacity_;
 
-                    other.data_ = nullptr;
-                    other.size_ = 0;
+                    other.data_     = nullptr;
+                    other.size_     = 0;
                     other.capacity_ = 0;
                 }
                 return *this;
@@ -88,14 +88,14 @@ namespace kstd {
 
             T& at(size_t index) {
                 // if (index >= size_)
-                    // kstd::throwx(new kstd::BaseException("Bad index"));
+                // kstd::throwx(new kstd::BaseException("Bad index"));
 
                 return data_[index];
             }
 
             const T& at(size_t index) const {
                 // if (index >= size_)
-                    // kstd::throwx(new kstd::BaseException("Bad index"));
+                // kstd::throwx(new kstd::BaseException("Bad index"));
 
                 return data_[index];
             }
@@ -140,7 +140,7 @@ namespace kstd {
                 if (new_capacity <= capacity_) return;
 
                 void* raw = ::operator new(new_capacity * sizeof(T),
-                                        align_val_t(alignof(T)));
+                        align_val_t(alignof(T)));
                 // if (!raw)
                 //     kstd::panic("vector::reserve OOM");
 
@@ -155,7 +155,7 @@ namespace kstd {
                     ::operator delete(data_, align_val_t(alignof(T)));
                 }
 
-                data_ = new_data;
+                data_     = new_data;
                 capacity_ = new_capacity;
             }
 

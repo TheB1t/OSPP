@@ -3,11 +3,11 @@
 #include <int/idt.hpp>
 #include <log.hpp>
 
-uint64_t pit::tick_count;
-uint32_t pit::interval_us;
+uint64_t          pit::tick_count;
+uint32_t          pit::interval_us;
 
 pit::TimerHandler pit::handlers[pit::MAX_HANDLERS] = {};
-size_t pit::handler_count;
+size_t            pit::handler_count;
 
 bool pit::register_handler(TimerCallback callback, void* arg, TimerTrigger trigger, uint64_t interval_us) {
     if (handler_count >= MAX_HANDLERS || !callback)
@@ -15,12 +15,12 @@ bool pit::register_handler(TimerCallback callback, void* arg, TimerTrigger trigg
 
     for (auto& handler : handlers) {
         if (!handler.active) {
-            handler.callback = callback;
-            handler.arg = arg;
-            handler.trigger = trigger;
-            handler.interval_us = (trigger == TimerTrigger::EveryTick) ? pit::interval_us : interval_us;
+            handler.callback          = callback;
+            handler.arg               = arg;
+            handler.trigger           = trigger;
+            handler.interval_us       = (trigger == TimerTrigger::EveryTick) ? pit::interval_us : interval_us;
             handler.last_triggered_us = tick_count * pit::interval_us;
-            handler.active = true;
+            handler.active            = true;
             ++handler_count;
             return true;
         }
@@ -64,7 +64,7 @@ void pit::tick_handler(bool has_ext, idt::BaseInterruptContext* base_ctx) {
                 break;
             case TimerTrigger::Interval:
                 if (current_time_us - handler.last_triggered_us >= handler.interval_us) {
-                    should_trigger = true;
+                    should_trigger            = true;
                     handler.last_triggered_us = current_time_us;
                 }
                 break;
@@ -85,9 +85,9 @@ void pit::tick_handler(bool has_ext, idt::BaseInterruptContext* base_ctx) {
 }
 
 void pit::init(uint32_t _interval_us) {
-    interval_us = _interval_us;
+    interval_us   = _interval_us;
     handler_count = 0;
-    tick_count = 0;
+    tick_count    = 0;
 
     uint16_t divisor = calculate_pit_divisor_us(interval_us);
 

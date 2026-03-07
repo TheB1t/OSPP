@@ -3,7 +3,7 @@
 #include <int/idt.hpp>
 
 namespace smp {
-    uint8_t next_core_id;
+    uint8_t            next_core_id;
 
     kstd::vector<Core> cores;
 
