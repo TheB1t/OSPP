@@ -1,8 +1,10 @@
 #pragma once
 
-#include <klibcpp/vector.hpp>
+#include <klibcpp/static_array.hpp>
 #include <klibcpp/cstdint.hpp>
+#include <klibcpp/trivial.hpp>
 #include <int/idt.hpp>
+#include <sys/smp.hpp>
 
 namespace sched {
 
@@ -15,19 +17,18 @@ namespace sched {
 
     struct Task {
         public:
-            uint32_t              id;
+            uint32_t            id;
 
-            idt::InterruptContext ctx;
+            idt::InterruptFrame ctx;
 
-            uint32_t              stack_ptr;
-            uint32_t              stack_base;
-            uint32_t              stack_size;
+            uint32_t            stack_ptr;
+            smp::BaseCoreStack* stack;
+            bool                own_stack;
 
-            TaskState             state;
-            const char*           name;
+            TaskState           state;
+            const char*         name;
 
-            Task(uint32_t id, const char* name);
-            Task(uint32_t id, const char* name, uint32_t stack_size);
+            Task(uint32_t id, const char* name, smp::BaseCoreStack* task_stack);
             ~Task();
 
             static void _die() {
@@ -61,38 +62,27 @@ namespace sched {
             }
     };
 
-    class Scheduler {
+    class Scheduler : public NonTransferable {
         private:
-            kstd::vector<Task*> tasks;
+            kstd::StaticArray<Task, 256> tasks;
             uint32_t current_task_index;
             uint32_t next_task_id;
             bool initialized;
             uint32_t time_slice_ms;
 
-            static void timer_tick(idt::InterruptContext* ctx, void*);
-
-            Scheduler();
+            static void timer_tick(idt::InterruptFrame* ctx, void*);
 
         public:
+            Scheduler(uint32_t time_slice_ms = 10);
             ~Scheduler();
-
-            Scheduler(const Scheduler&)             = delete;
-            Scheduler&  operator=(const Scheduler&) = delete;
-
-            static Scheduler* get() {
-                static Scheduler* instance = new Scheduler();
-                return instance;
-            }
 
             bool is_initialized() const { return initialized; }
 
-            void        init(uint32_t time_slice_ms = 10);
+            Task&       create_task(const char* name, void (*entry_point)());
 
-            Task*       create_task(const char* name, void (*entry_point)(), uint32_t stack_size = 4096);
-
-            void        schedule(idt::InterruptContext* ctx);
+            void        schedule(idt::InterruptFrame* ctx);
             void        yield();
 
-            Task*       current_task();
+            Task&       current_task();
     };
 }

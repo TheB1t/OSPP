@@ -1,6 +1,6 @@
 #include <int/idt.hpp>
 #include <driver/pic.hpp>
-#include <sys/apic.hpp>
+#include <sys/smp.hpp>
 #include <log.hpp>
 
 namespace idt {
@@ -24,7 +24,7 @@ namespace idt {
 
         for(int i = 0; i < 256; i++) {
             entries[i].zero = 0;
-            set_entry(i, reinterpret_cast<void (*)()>(isr_table[i]), Flags::PRESENT | Flags::INTERRUPT_GATE);
+            set_entry(i, reinterpret_cast<void (*)()>(isr_table[i].entry), Flags::PRESENT | Flags::INTERRUPT_GATE);
         }
 
         flush(&ptr);
@@ -46,39 +46,34 @@ namespace idt {
         irq_handlers[irq] = nullptr;
     }
 
-    void isr_handler(uint8_t no, uint32_t err, bool has_ext, void* ctx_ptr) {
-        BaseInterruptContext* ctx = reinterpret_cast<BaseInterruptContext*>(ctx_ptr);
-
-        /*
-            TODO:
-                Temporary solution for not blowing things up.
-                But if there a nested interrupt occurs, or
-                SMP is enabled, this won't work.
-        */
+    void isr_handler(uint8_t no, uint32_t err, void* ctx_ptr) {
+        BaseInterruptFrame* ctx = reinterpret_cast<BaseInterruptFrame*>(ctx_ptr);
+        // TODO: save FPU state per-core or per-context; this static buffer is not SMP-safe.
         static char fxsave_region[512] __attribute__((aligned(16)));
         __asm__ volatile (" fxsave %0 " ::"m" (fxsave_region));
 
         if(no >= 32 && no < 48) { // IRQ
             uint8_t irq = no - 32;
             if(irq_handlers[irq]) {
-                irq_handlers[irq](has_ext, ctx);
+                irq_handlers[irq](ctx);
             } else {
-                LOG_WARN("Got IRQ%d (%s), but there's no handler for it. Ignoring...\n", irq, irq_messages[irq]);
+                LOG_WARN("[idt] Unhandled IRQ%u (%s), ignoring\n", irq, irq_messages[irq]);
             }
 
             pic::EOI(irq);
         } else {
             if(isr_handlers[no]) {
-                isr_handlers[no](err, has_ext, ctx);
+                isr_handlers[no](err, ctx);
             } else if (no < 32) {
                 kstd::panic("Unhandled critical ISR: %d (%s)", no, exception_messages[no]);
             } else {
-                LOG_WARN("Got ISR%d (USER), but there's no handler for it. Ignoring...\n", no);
+                LOG_WARN("[idt] Unhandled ISR%u (user), ignoring\n", no);
             }
         }
 
         __asm__ volatile (" fxrstor %0 " ::"m" (fxsave_region));
-        apic::get()->EOI();
+        if (smp::CoreManager::current_anchor()->core)
+            smp::CoreManager::current_anchor()->core->lapic.EOI();
     }
 
     void flush(const Ptr* idtr) {

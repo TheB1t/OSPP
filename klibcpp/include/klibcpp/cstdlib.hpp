@@ -15,10 +15,11 @@ void  operator delete(void* ptr, size_t size) noexcept;
 void* operator new[](size_t size);
 void  operator delete[](void* ptr) noexcept;
 void  operator delete[](void* ptr, size_t size) noexcept;
-void* operator new(size_t size, align_val_t alignment);
-void  operator delete(void* ptr, align_val_t alignment) noexcept;
-void* operator new[](size_t size, align_val_t alignment);
-void  operator delete[](void* ptr, align_val_t alignment) noexcept;
+void* operator new(size_t size, std::align_val_t alignment);
+void  operator delete(void* ptr, std::align_val_t alignment) noexcept;
+void* operator new[](size_t size, std::align_val_t alignment);
+void  operator delete[](void* ptr, std::align_val_t alignment) noexcept;
+void  operator delete(void* ptr, uint32_t, std::align_val_t alignment) noexcept;
 
 namespace kstd {
     template<typename... Args>

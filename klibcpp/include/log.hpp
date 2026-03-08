@@ -32,12 +32,14 @@ namespace Log {
         if (level > global_level)
             return;
 
-        static constexpr size_t BUFFER_SIZE = 1024;
+        static constexpr size_t BUFFER_SIZE = 256;
         size_t                  remaining   = BUFFER_SIZE;
         char  buffer[BUFFER_SIZE];
         char* pos = buffer;
 
-        auto  safe_snprintf = [&](const char* format, auto... params) {
+        memset((uint8_t*)buffer, 0, BUFFER_SIZE);
+
+        auto safe_snprintf = [&](const char* format, auto... params) {
                 int written = snprintf(pos, remaining, format, params...);
                 if (written < 0 || static_cast<size_t>(written) >= remaining) {
                     written = remaining > 0 ? remaining - 1 : 0;

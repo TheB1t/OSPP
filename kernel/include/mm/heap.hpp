@@ -14,9 +14,9 @@ typedef	struct {
 
 class Heap {
     public:
-        Heap() = default;
+        Heap(uint32_t start, uint32_t size, uint32_t max, uint16_t perms);
+        ~Heap() = default;
 
-        void         create(uint32_t start, uint32_t size, uint32_t max, uint16_t perms);
         void*        alloc(uint32_t size);
         void*        palignedAlloc(uint32_t size);
         void         free(void* p);
@@ -30,11 +30,6 @@ class Heap {
 
         void         expand(size_t newSize);
         size_t       contract(size_t newSize);
-
-        static Heap* get_kernel_heap() {
-            static Heap instance;
-            return &instance;
-        }
 
     private:
         uint32_t startAddr;

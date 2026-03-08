@@ -111,7 +111,7 @@ void Heap::removeChunk(HeapChunk_t* chunk) {
     __list_del_entry(&(chunk->list));
 }
 
-void Heap::create(uint32_t start, uint32_t size, uint32_t max, uint16_t perms) {
+Heap::Heap(uint32_t start, uint32_t size, uint32_t max, uint16_t perms) {
     uint32_t end = start + size;
     assert(start % mm::PAGE_SIZE == 0);
     assert(end % mm::PAGE_SIZE == 0);
@@ -122,7 +122,7 @@ void Heap::create(uint32_t start, uint32_t size, uint32_t max, uint16_t perms) {
     this->perms		= perms;
     INIT_LIST_HEAD(get_head(this));
 
-    uint32_t phys = mm::pmm::alloc_pages(size / mm::PAGE_SIZE);
+    uint32_t phys = mm::pmm::alloc_frames(size / mm::PAGE_SIZE);
     mm::vmm::map_pages(start, phys, size / mm::PAGE_SIZE, this->perms | mm::Flags::Present);
 
     HeapChunk_t* hole = (HeapChunk_t*)start;
@@ -145,7 +145,7 @@ void Heap::expand(size_t newSize) {
     this->endAddr = this->startAddr + newSize;
 
     size_t   size = this->endAddr - oldEnd;
-    uint32_t phys = mm::pmm::alloc_pages(size / mm::PAGE_SIZE);
+    uint32_t phys = mm::pmm::alloc_frames(size / mm::PAGE_SIZE);
 
     mm::vmm::map_pages(oldEnd, phys, size / mm::PAGE_SIZE, this->perms | mm::Flags::Present);
 }
@@ -164,13 +164,15 @@ size_t Heap::contract(size_t newSize) {
     uint32_t oldEnd = this->endAddr;
     this->endAddr = this->startAddr + newSize;
 
-    size_t   size = oldEnd - this->endAddr;
+    size_t size = oldEnd - this->endAddr;
+    if (!size)
+        return newSize;
+
     uint32_t phys = mm::vmm::virt_to_phys(this->endAddr);
     if (phys == 0xFFFFFFFF)
         LOG_WARN("[heap] trying to free unmapped memory! addr: 0x%08x\n", this->endAddr);
 
     mm::vmm::unmap_pages(this->endAddr, size / mm::PAGE_SIZE);
-    mm::pmm::free_pages(phys, size / mm::PAGE_SIZE);
 
     return newSize;
 }
@@ -271,7 +273,7 @@ void Heap::free(void* ptr) {
         removeChunk(block);
     }
 
-    if (!ok_address(next, this)) {
+    if (ok_address(next, this)) {
         if (!pinuse(next))
             goto _Lassert2;
 

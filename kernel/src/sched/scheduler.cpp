@@ -3,44 +3,40 @@
 #include <mm/vmm.hpp>
 #include <driver/pit.hpp>
 #include <klibcpp/kstd.hpp>
+#include <sys/smp.hpp>
 #include <log.hpp>
 
 namespace sched {
 
     static void dummy_func() {
-        LOG_INFO("Task runs dummy_func because eip not specified\n");
         while (true)
             __hlt;
     }
 
-    Task::Task(uint32_t id, const char* name)
-        : id(id), stack_size(0),
-          state(TaskState::READY), name(name) {
-        stack_base = 0;
-        stack_ptr  = 0;
+    Task::Task(uint32_t id, const char* name, smp::BaseCoreStack* task_stack)
+        : id(id), state(TaskState::READY), name(name) {
 
-        memset((uint8_t*)&ctx, 0, sizeof(idt::InterruptContext));
+        if (task_stack) {
+            stack     = task_stack;
+            stack_ptr = task_stack->initial_sp();
+            own_stack = false;
+            ctx.eax   = 0;
+            ctx.ebx   = 0;
+        } else {
+            stack     = new smp::BaseCoreStack;
+            stack_ptr = stack->initial_sp();
+            own_stack = true;
 
-        ctx.ds          = 0x10;
-        ctx.es          = 0x10;
-        ctx.fs          = 0x10;
-        ctx.gs          = 0x10;
+            uint32_t sp   = kstd::get_stack_pointer();
 
-        ctx.base.eip    = 0;
-        ctx.base.cs     = 0x8;
-        ctx.base.eflags = 0x202;
+            auto*    test = smp::BaseCoreStack::from_sp(sp);
+            stack->copy_anchor_from(*test);
 
-        LOG_INFO("Created task %d (%s) without stack\n", id, name);
-    }
+            ctx.base.eip = (uint32_t)&Task::_crt_task_entry;
+            ctx.eax      = (uint32_t)dummy_func;
+            ctx.ebx      = stack_ptr;
+        }
 
-    Task::Task(uint32_t id, const char* name, uint32_t stack_size)
-        : id(id), stack_size(stack_size),
-          state(TaskState::READY), name(name) {
-        stack_base      = (uint32_t) new uint8_t[stack_size];
-        stack_ptr       = stack_base + stack_size;
-
-        ctx.eax         = (uint32_t)dummy_func;
-        ctx.ebx         = stack_ptr;
         ctx.ecx         = 0;
         ctx.edx         = 0;
         ctx.esi         = 0;
@@ -56,45 +52,19 @@ namespace sched {
         ctx.int_no      = 0;
         ctx.err_code    = 0;
 
-        ctx.base.eip    = (uint32_t)&Task::_crt_task_entry;
         ctx.base.cs     = 0x8;
         ctx.base.eflags = 0x202;
 
-        LOG_INFO("Created task %d (%s) with stack at 0x%08x\n", id, name, stack_base);
     }
 
     Task::~Task() {
-        if (stack_base) {
-            delete[] (uint8_t*)stack_base;
-        }
-
-        LOG_INFO("Destroyed task %d (%s)\n", id, name);
+        if (stack->base() && own_stack)
+            delete stack;
     }
 
-    Scheduler::Scheduler()
+    Scheduler::Scheduler(uint32_t time_slice_ms)
         : current_task_index(0), next_task_id(1),
-          initialized(false), time_slice_ms(10)
-    {}
-
-    Scheduler::~Scheduler() {
-        kstd::InterruptGuard guard;
-
-        initialized = false;
-
-        pit::unregister_handler(timer_tick, this);
-        idt::unregister_isr(33);
-
-        for (auto* task : tasks) {
-            delete task;
-        }
-    }
-
-    void Scheduler::timer_tick(idt::InterruptContext* ctx, void* ptr) {
-        Scheduler* c = reinterpret_cast<Scheduler*>(ptr);
-        c->schedule(ctx);
-    }
-
-    void Scheduler::init(uint32_t time_slice_ms) {
+          initialized(false), time_slice_ms(time_slice_ms) {
         kstd::InterruptGuard guard;
 
         if (initialized)
@@ -104,12 +74,13 @@ namespace sched {
 
         pit::register_handler(timer_tick, this, pit::TimerTrigger::Interval, time_slice_ms * 1000);
 
-        idt::register_isr(33, [](uint32_t, bool has_ext, idt::BaseInterruptContext* base_ctx) {
-                if (has_ext) {
-                    idt::InterruptContext* ctx = idt::InterruptContext::from_base(base_ctx);
-                    get()->schedule(ctx);
+        idt::register_isr(48, [](uint32_t, idt::BaseInterruptFrame* base_ctx) {
+                if (idt::get_isr_frame_kind<48>() == idt::InterruptFrameKind::ContextSwitch) {
+                    idt::InterruptFrame* ctx = idt::InterruptFrame::from_base(base_ctx);
+                    smp::Core* current_core  = smp::CoreManager::current_core();
+                    current_core->scheduler().schedule(ctx);
                 } else {
-                    LOG_WARN("Received rechedule interrupt without extended context!\n");
+                    LOG_WARN("[sched] received reschedule interrupt without extended context\n");
                 }
             });
 
@@ -120,19 +91,32 @@ namespace sched {
 
         initialized = true;
 
-        LOG_INFO("Scheduler initialized with %dms time slice\n", time_slice_ms);
+        LOG_INFO("[sched] Initialized with %ums time slice\n", time_slice_ms);
     }
 
-    Task* Scheduler::create_task(const char* name, void (*entry_point)(), uint32_t stack_size) {
-        Task* task = new Task(next_task_id++, name, stack_size);
+    Scheduler::~Scheduler() {
+        kstd::InterruptGuard guard;
 
-        task->ctx.eax = (uint32_t)entry_point;
-        tasks.push_back(task);
+        initialized = false;
+
+        pit::unregister_handler(timer_tick, this);
+        idt::unregister_isr(48);
+    }
+
+    void Scheduler::timer_tick(idt::InterruptFrame* ctx, void* ptr) {
+        Scheduler* c = reinterpret_cast<Scheduler*>(ptr);
+        c->schedule(ctx);
+    }
+
+    Task& Scheduler::create_task(const char* name, void (*entry_point)()) {
+        Task& task = tasks.emplace(next_task_id++, name, nullptr);
+
+        task.ctx.eax = (uint32_t)entry_point;
 
         return task;
     }
 
-    void Scheduler::schedule(idt::InterruptContext* ctx) {
+    void Scheduler::schedule(idt::InterruptFrame* ctx) {
         if (!initialized || tasks.empty())
             return;
 
@@ -142,44 +126,46 @@ namespace sched {
             and we still need to create the "kernel" task, because `ctx` currently
             contains the BSP kernel context.
         */
-        if (tasks.size() <= 1) {
-            Task* task = new Task(next_task_id++, "kernel");
+        if (tasks.live_count() <= 1) {
+            Task& task = tasks.emplace(next_task_id++, "kernel", &stack);
 
-            memcpy((uint8_t*)&task->ctx, (uint8_t*)ctx, sizeof(idt::InterruptContext));
+            memcpy((uint8_t*)&task.ctx, (uint8_t*)ctx, sizeof(idt::InterruptFrame));
 
-            tasks.push_back(task);
             current_task_index = 1;
-        } else if (current_task_index < tasks.size()) {
-            Task* current = tasks[current_task_index];
-            if (current->state == TaskState::RUNNING) {
-                current->stack_ptr = (uint32_t)ctx + sizeof(idt::InterruptContext);
-                memcpy((uint8_t*)&current->ctx, (uint8_t*)ctx, sizeof(idt::InterruptContext));
+        } else if (tasks.occupied(current_task_index)) {
+            Task& current = tasks[current_task_index];
+            if (current.state == TaskState::RUNNING) {
+                current.stack_ptr = (uint32_t)ctx + sizeof(idt::InterruptFrame);
+                memcpy((uint8_t*)&current.ctx, (uint8_t*)ctx, sizeof(idt::InterruptFrame));
 
                 if (ctx->eax == 0xDEADDEAD && ctx->ebp == 0x00000000) {
-                    current->state = TaskState::TERMINATED;
-                    LOG_INFO("Task %d (%s) terminated\n", current->id, current->name);
+                    current.state = TaskState::TERMINATED;
+                    LOG_INFO("[sched] Task %u (%s) terminated\n", current.id, current.name);
                 } else {
-                    current->state = TaskState::READY;
+                    current.state = TaskState::READY;
                 }
             }
         }
 
         size_t start_index = current_task_index;
         do {
-            current_task_index = (current_task_index + 1) % tasks.size();
+            current_task_index = (current_task_index + 1) % tasks.capacity();
 
-            Task* next = tasks[current_task_index];
-            if (next->state == TaskState::READY) {
-                next->state = TaskState::RUNNING;
-                memcpy((uint8_t*)ctx, (uint8_t*)&next->ctx, sizeof(idt::InterruptContext));
+            if (!tasks.occupied(current_task_index))
+                continue;
+
+            Task& next = tasks[current_task_index];
+            if (next.state == TaskState::READY) {
+                next.state = TaskState::RUNNING;
+                memcpy((uint8_t*)ctx, (uint8_t*)&next.ctx, sizeof(idt::InterruptFrame));
                 return;
             }
 
         } while (current_task_index != start_index);
 
-        if (current_task_index < tasks.size()) {
-            Task* current = tasks[current_task_index];
-            current->state = TaskState::RUNNING;
+        if (tasks.occupied(current_task_index)) {
+            Task& current = tasks[current_task_index];
+            current.state = TaskState::RUNNING;
         }
     }
 
@@ -187,13 +173,10 @@ namespace sched {
         if (!initialized)
             return;
 
-        kstd::trigger_interrupt<33>();
+        kstd::trigger_interrupt<48>();
     }
 
-    Task* Scheduler::current_task() {
-        if (!initialized)
-            return nullptr;
-
+    Task& Scheduler::current_task() {
         return tasks[current_task_index];
     }
 }

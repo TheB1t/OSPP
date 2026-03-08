@@ -6,7 +6,7 @@
 
 class pit {
     public:
-        using TimerCallback = void (*)(idt::InterruptContext*, void*);
+        using TimerCallback = void (*)(idt::InterruptFrame*, void*);
 
         enum class TimerTrigger {
             EveryTick,
@@ -46,7 +46,7 @@ class pit {
         static void     sleep_us(uint32_t target_us);
 
     private:
-        static void     tick_handler(bool has_ext, idt::BaseInterruptContext* base_ctx);
+        static void     tick_handler(idt::BaseInterruptFrame* base_ctx);
 
         static uint64_t tick_count;
         static uint32_t interval_us;

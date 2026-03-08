@@ -1,5 +1,6 @@
 #include <multiboot.hpp>
 #include <klibcpp/cstdint.hpp>
+#include <sys/smp.hpp>
 
 __extern_c void kernel_early_main(multiboot_info_t* mboot, uint32_t magic);
 
@@ -22,9 +23,9 @@ const _multiboot_header_ mboot_header {
 };
 
 __used
-__aligned(16)
+    __aligned(4096)
 __section(".bss")
-uint8_t stack[4096] = {0};
+smp::BaseCoreStack stack;
 
 __extern_c
 __naked
@@ -43,7 +44,7 @@ void cold_start() {
          "hlt\n"
          "jmp .Lhalt\n"
          :
-         : [stack_top] "i" (stack + sizeof(stack)),
+         : [stack_top] "i" (stack.initial_sp()),
            [kernel_entry] "i" (kernel_early_main)
          : "memory"
     );

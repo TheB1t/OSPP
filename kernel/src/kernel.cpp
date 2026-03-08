@@ -1,10 +1,10 @@
-#include <multiboot.hpp>
+#include <kernel.hpp>
+
 #include <icxxabi.hpp>
 #include <int/gdt.hpp>
 #include <int/idt.hpp>
 #include <mm/pmm.hpp>
 #include <mm/vmm.hpp>
-#include <mm/heap.hpp>
 #include <klibcpp/cstdlib.hpp>
 #include <klibcpp/cstdint.hpp>
 #include <klibcpp/cstring.hpp>
@@ -13,94 +13,145 @@
 #include <driver/pic.hpp>
 #include <driver/pit.hpp>
 #include <driver/early_display.hpp>
+#include <driver/serial.hpp>
 #include <sys/acpi.hpp>
-#include <sys/apic.hpp>
-#include <sys/module.hpp>
-#include <sys/smp.hpp>
 #include <sys/kexp.hpp>
-#include <sched/scheduler.hpp>
 #include <log.hpp>
 
-static multiboot_info_t mboot_saved;
-KernelAPI               api;
+#if defined(KERNEL_SELF_TESTS)
+#include <ktest/builtin.hpp>
+#endif
+
+__extern_c {
+    void _init();
+    void _fini();
+}
+
+KernelAPI api;
 
 EXPORT_SYMBOL("api", api);
 
-class TestClass {
-    public:
-        int a;
-        int b;
-        int c;
+static Kernel* g_kernel = nullptr;
+alignas(Kernel) static uint8_t kernel_storage[sizeof(Kernel)];
 
-        TestClass() {
-            LOG_INFO("Hello from TestClass constructor (this = 0x%08x)\n", this);
-        }
+void Kernel::init(multiboot_info_t* mboot) {
+    memcpy((uint8_t*)&_mboot, (uint8_t*)mboot, sizeof(multiboot_info_t));
 
-        ~TestClass() {
-            LOG_INFO("Hello from TestClass destructor (this = 0x%08x)\n", this);
-        }
-};
+    LOG_INFO("[boot] Loaded %d modules\n", _mboot.mods_count);
+    LOG_INFO("[boot] Loaded %s table\n",
+        _mboot.flags & MULTIBOOT_INFO_AOUT_SYMS    ? "symbol" :
+        _mboot.flags & MULTIBOOT_INFO_ELF_SHDR     ? "section" : "no one"
+    );
 
-TestClass test;
-kstd::shared_ptr<TestClass> class0;
+    pic::remap();
+    pit::init(pit::calculate_pit_divisor_us(1000));
 
-void at_exit_test() {
-    LOG_INFO("Hello from at_exit_test\n");
+    gdt::init_bsp();
+
+    /*
+        Above this point, you may only use functionality that does not
+        require interrupts and cannot trigger any interrupts
+        (e.g., page faults, division by zero, etc.),
+        as doing so will result in an immediate triple fault.
+    */
+    idt::init();
+
+    mm::pmm::init(&_mboot);
+    mm::vmm::init();
+    acpi::init();
+
+    /*
+        Initializing the kernel heap. Attempting to use it before this point
+        will result in a page fault or other undefined behavior.
+    */
+    _heap.construct(0x01000000, HEAP_MIN_SIZE, 0x02000000, mm::Present | mm::Writable);
+
+    multiboot_module_t* mod       = (multiboot_module_t*)_mboot.mods_addr;
+    uint32_t            mod_count = _mboot.mods_count;
+
+    _linker.construct();
+    _mmanager.construct(_linker.ptr_if_constructed());
+    for (uint32_t i = 0; i < mod_count; i++) {
+        _mmanager->registerModule((void*)mod->mod_start);
+    }
+
+    _apic.construct();
+    _apic->init();
+    _apic->configure();
+
+
+    _cmanager.construct(this, reinterpret_cast<uint32_t>(_apic->lapic_base), _apic->lapics);
+    _cmanager->init_bsp();
+
+    pic::disable();
+    _apic->get_lapic().enable();
+
+    /*
+        Above this point, only exceptions are functional;
+        user-defined or hardware interrupts will be ignored.
+    */
+    __sti();
+    _cmanager->init();
+
+    /*
+        You may initialize any components that do not depend on the
+        initialization of global or static variables before calling _init().
+
+        However, attempting to initialize objects that *do* rely on
+        global or static variables before their initialization will lead to
+        undefined behavior — such as a page fault or other critical faults.
+    */
+    LOG_INFO("[cpp] _init()\n");
+    _init();
+
+    _sched.construct();
+    _sched->yield();
 }
 
-void test_func(kstd::shared_ptr<TestClass> ptr) {
-    LOG_INFO("Hello from test_func (ptr = 0x%08x, use_count = %d)\n", ptr.get(), ptr.use_count());
+Kernel::~Kernel() {
+    __cli();
+
+    LOG_INFO("[cpp] __cxa_finalize(0)\n");
+    __cxa_finalize(0);
+
+#if defined(KERNEL_SELF_TESTS)
+    ktest::builtin::finalize();
+#endif
+
+    LOG_INFO("[cpp] _fini()\n");
+    _fini();
+
+    _sched.try_destruct();
+    _cmanager.try_destruct();
+    _apic.try_destruct();
+    _mmanager.try_destruct();
+    _linker.try_destruct();
+    _heap.try_destruct();
 }
 
-void kernel_main(multiboot_info_t*) {
+void kernel_main() {
     /*
         At this stage, a near-complete C++ environment is available, allowing
         the use of most C++ features—excluding the STL, of course. Features
         such as `new` and `delete` are supported, with only a minimal risk
         of catastrophic failure — depending on how carefully they are used :D.
     */
-    TestClass test;
-    LOG_INFO("Hello from kernel_main\n");
     EarlyDisplay::printf("Successfully initialized\n");
-    kstd::atexit(at_exit_test);
 
-    class0 = kstd::make_shared<TestClass>();
-    kstd::shared_ptr<TestClass> class1 = kstd::make_shared<TestClass>();
-    kstd::shared_ptr<TestClass> class2(class1);
-    class2.reset();
+#if defined(KERNEL_SELF_TESTS)
+    ktest::builtin::run_all(*g_kernel);
+#endif
 
-    test_func(class0);
-
-    LOG_INFO("class0 = 0x%08x, class1 = 0x%08x\n", class0.get(), class1.get());
-    LOG_INFO("class0 use_count = %d, class1 use_count = %d\n", class0.use_count(), class1.use_count());
-
-    LOG_INFO("We reached end of kernel_main\n");
     EarlyDisplay::printf("Leaving kernel_main\n");
-
-    sched::Scheduler::get()->create_task("task1", []() {
-            while (true) {
-                LOG_INFO("Task 1 running\n");
-                pit::sleep_us(1000 * 1000);
-            }
-        });
-
-    sched::Scheduler::get()->create_task("task2", []() {
-            LOG_INFO("Task 2 running\n");
-        });
-
-    pit::sleep_us(2 * 1000 * 1000);
 }
 
 __extern_c {
-    void _init();
-    void _fini();
-
     __cdecl void* _kmalloc(uint32_t size, bool align) {
-        return (void*)heap_malloc(Heap::get_kernel_heap(), size, align);
+        return (void*)heap_malloc(&g_kernel->_heap.get(), size, align);
     }
 
     __cdecl void _kfree(void* ptr) {
-        heap_free(Heap::get_kernel_heap(), ptr);
+        heap_free(&g_kernel->_heap.get(), ptr);
     }
 
     __cdecl uint32_t _get_ticks() {
@@ -125,6 +176,10 @@ __extern_c {
     }
 
     void kernel_early_main(multiboot_info_t* mboot, uint32_t magic) {
+        stack.init_stack_anchor(0, nullptr);
+
+        g_kernel = new (kernel_storage) Kernel();
+
         init_api();
 
         // TODO: Implement proper FPU initialization
@@ -139,92 +194,13 @@ __extern_c {
             __unreachable();
         }
 
-        memcpy((uint8_t*)&mboot_saved, (uint8_t*)mboot, sizeof(multiboot_info_t));
+        g_kernel->init(mboot);
 
-        LOG_INFO("[boot] Loaded %d modules\n", mboot_saved.mods_count);
-        LOG_INFO("[boot] Loaded %s table\n",
-            mboot_saved.flags & MULTIBOOT_INFO_AOUT_SYMS    ? "symbol" :
-            mboot_saved.flags & MULTIBOOT_INFO_ELF_SHDR     ? "section" : "no one"
-        );
+        kernel_main();
 
-        pic::remap();
-        pit::init(pit::calculate_pit_divisor_us(1000));
+        g_kernel->~Kernel();
 
-        gdt::init_bsp();
-
-        /*
-            Above this point, you may only use functionality that does not
-            require interrupts and cannot trigger any interrupts
-            (e.g., page faults, division by zero, etc.),
-            as doing so will result in an immediate triple fault.
-        */
-        idt::init();
-
-        /*
-            Above this point, only exceptions are functional;
-            user-defined or hardware interrupts will be ignored.
-        */
-        __sti();
-
-        mm::pmm::init(&mboot_saved);
-        mm::vmm::init();
-        acpi::init();
-
-        /*
-            Initializing the kernel heap. Attempting to use it before this point
-            will result in a page fault or other undefined behavior.
-        */
-        Heap::get_kernel_heap()->create(0x01000000, HEAP_MIN_SIZE, 0x02000000, mm::Present | mm::Writable);
-
-        multiboot_module_t* mod = (multiboot_module_t*)mboot_saved.mods_addr;
-        uint32_t mod_count      = mboot_saved.mods_count;
-
-        for (uint32_t i = 0; i < mod_count; i++) {
-            ModuleManager::get()->registerModule((void*)mod->mod_start);
-        }
-
-        apic::get()->init(); // Initialize APIC
-        apic::get()->configure(); // Configure APIC
-
-        pic::disable(); // Disable PIC
-        apic::get()->enable(); // Enable APIC
-
-        kstd::trigger_interrupt<50>(); // Test interrupts :)
-        // serial::set_interrupts(serial::COM1, true);
-
-        smp::init();
-
-        /*
-            You may initialize any components that do not depend on the
-            initialization of global or static variables before calling _init().
-
-            However, attempting to initialize objects that *do* rely on
-            global or static variables before their initialization will lead to
-            undefined behavior — such as a page fault or other critical faults.
-        */
-        LOG_INFO("Hello from kernel_early_main\n");
-
-        LOG_INFO("[cpp] _init()\n");
-        _init();
-
-        sched::Scheduler::get()->init();
-        sched::Scheduler::get()->yield();
-
-        kernel_main(&mboot_saved);
-
-        __cli();
-
-        LOG_INFO("[cpp] __cxa_finalize(0)\n");
-        __cxa_finalize(0);
-        LOG_INFO("[cpp] _fini()\n");
-        _fini();
-
-        delete sched::Scheduler::get();
-        delete apic::get();
-        delete Linker::get();
-        delete ModuleManager::get();
-
-        LOG_INFO("Terminated\n");
+        LOG_INFO("[boot] Terminated\n");
         __unreachable();
     }
 }

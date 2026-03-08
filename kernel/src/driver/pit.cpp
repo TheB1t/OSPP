@@ -44,12 +44,12 @@ bool pit::unregister_handler(TimerCallback callback, void* arg) {
     return false;
 }
 
-void pit::tick_handler(bool has_ext, idt::BaseInterruptContext* base_ctx) {
+void pit::tick_handler(idt::BaseInterruptFrame* base_ctx) {
     ++tick_count;
     uint64_t current_time_us = tick_count * interval_us;
 
-    if (!has_ext) {
-        LOG_WARN("There's no extended interrupt context for the PIT, TimerTriggered handlers won't work!\n");
+    if (idt::get_irq_frame_kind<0>() != idt::InterruptFrameKind::ContextSwitch) {
+        LOG_WARN("[pit] timer-triggered handlers require extended interrupt context\n");
         return;
     }
 
@@ -78,7 +78,7 @@ void pit::tick_handler(bool has_ext, idt::BaseInterruptContext* base_ctx) {
         }
 
         if (should_trigger && handler.callback) {
-            idt::InterruptContext* ctx = idt::InterruptContext::from_base(base_ctx);
+            idt::InterruptFrame* ctx = idt::InterruptFrame::from_base(base_ctx);
             handler.callback(ctx, handler.arg);
         }
     }

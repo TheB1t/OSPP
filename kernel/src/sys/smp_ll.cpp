@@ -4,11 +4,17 @@
 
 __extern_c
 void warm_start_32() {
-    smp::Core* current = smp::current_core();
-    if (current)
-        current->init();
-    else
-        LOG_WARN("Failed to get current core\n");
+    /*
+        GDT, IDT and Paging already setted up at this point
+        They equal to BSP's GDT, IDT and Paging
+    */
+    kstd::init_fpu();
+    smp::Core* core = smp::CoreManager::current_core();
+
+    LOG_INFO("[smp] Core %u is ready\n", core->id);
+
+    core->initialized = true;
+    smp::CoreManager::_pause(); // Go to sleep
 }
 
 __extern_c

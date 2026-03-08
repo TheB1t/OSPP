@@ -4,9 +4,9 @@
 #include <log.hpp>
 
 namespace mm {
-    uint32_t           pmm::bitmap[BITMAP_SIZE];
-    uint32_t           pmm::used_pages;
-    uint32_t           pmm::memory_size;
+    PMM                pmm::mem_mngr;
+    uint32_t           pmm::available_frames;
+    uint32_t           pmm::used_frames;
 
     static const char* typeNames[] = { "UNKNOWN", "AVAILABLE", "RESERVED", "ACPI", "NVS", "BAD MEMORY" };
 
@@ -25,20 +25,20 @@ namespace mm {
 
         multiboot_memory_map_t* mmap     = (multiboot_memory_map_t*)mboot->mmap_addr;
         uint32_t                mmap_end = (uint32_t)mboot->mmap_addr + mboot->mmap_length;
-        memory_size = 0;
-        used_pages  = 0;
+        available_frames = 0;
+        used_frames      = 0;
+
+        mem_mngr.mark_units_used(0, MAX_FRAMES);
 
 
-        for (uint32_t i = 0; i < BITMAP_SIZE; i++)
-            bitmap[i] = 0xFFFFFFFF;
-
+        uint32_t memory_size = 0;
         LOG_INFO("[pmm] Memory map provided by bootloader:\n");
         while ((uint32_t)mmap < mmap_end) {
             uint32_t base   = mmap->addr;
             uint32_t length = mmap->len;
             uint32_t type   = mmap->type;
 
-            LOG_INFO("   0x%08x - 0x%08x (len 0x%08x) [%s]\n",
+            LOG_INFO("[pmm] 0x%08x - 0x%08x (len 0x%08x) [%s]\n",
                 base, base + length, length, typeNames[type]
             );
 
@@ -51,14 +51,24 @@ namespace mm {
             mmap = (multiboot_memory_map_t*)((uint32_t)mmap + mmap->size + sizeof(mmap->size));
         }
 
-        // Map kernel memory
-        LOG_INFO("[pmm] Mapping kernel memory\n");
-        LOG_INFO("- from 0x%08x\n", (uint32_t)&__kernel_start);
-        LOG_INFO("- to 0x%08x\n", (uint32_t)&__kernel_end);
+        available_frames = (memory_size + 0x100000) / PAGE_SIZE;
+
+        uint32_t low_boot_reserved_end = align_up((uint32_t)&__kernel_end, PAGE_SIZE);
+
+        if (TEST_MASK(mboot->flags, MULTIBOOT_INFO_MODS)) {
+            multiboot_module_t* mod = reinterpret_cast<multiboot_module_t*>(mboot->mods_addr);
+            for (uint32_t i = 0; i < mboot->mods_count; ++i) {
+                uint32_t mod_end = align_up(mod[i].mod_end, PAGE_SIZE);
+                if (mod_end > low_boot_reserved_end)
+                    low_boot_reserved_end = mod_end;
+            }
+        }
+
+        LOG_INFO("[pmm] Reserving kernel image 0x%08x-0x%08x\n", (uint32_t)&__kernel_start, (uint32_t)&__kernel_end);
         uint32_t kernel_span = page_aligned_span((uint32_t)&__kernel_start,
                 (uint32_t)&__kernel_end - (uint32_t)&__kernel_start);
         deinit_region((uint32_t)&__kernel_start, kernel_span);
-        used_pages += kernel_span / PAGE_SIZE;
+        used_frames += ((uint32_t)&__kernel_end - (uint32_t)&__kernel_start) / PAGE_SIZE;
 
         if (TEST_MASK(mboot->flags, MULTIBOOT_INFO_MODS)) {
             multiboot_module_t* mod = reinterpret_cast<multiboot_module_t*>(mboot->mods_addr);
@@ -68,8 +78,15 @@ namespace mm {
 
                 LOG_INFO("[pmm] Reserving module %d at 0x%08x-0x%08x\n", i, mod[i].mod_start, mod[i].mod_end);
                 deinit_region(mod[i].mod_start, span);
-                used_pages += span / PAGE_SIZE;
             }
+        }
+
+        // Keep the entire low bootstrap area out of the allocator. This covers the
+        // kernel image, multiboot modules and other early low-memory objects so PMM
+        // cannot hand out frames that alias live code/data.
+        if (low_boot_reserved_end > 0x00100000) {
+            LOG_INFO("[pmm] Reserving low bootstrap area 0x%08x-0x%08x\n", 0x00100000, low_boot_reserved_end);
+            deinit_region(0x00100000, low_boot_reserved_end - 0x00100000);
         }
 
         uint32_t tmem = total_memory();
@@ -87,70 +104,23 @@ namespace mm {
         LOG_INFO("[pmm] Used Memory: %.2f %s (%d bytes)\n", convert(umem, Unit::B, umemu), unitNames[umemu], umem);
     }
 
-    uint32_t pmm::alloc_pages(uint32_t count) {
-        if (count == 0)
-            return 0;
-
-        for (uint32_t i = 0; i <= MAX_PAGES - count; i++) {
-            bool found = true;
-            for (uint32_t j = 0; j < count; j++) {
-                if (test_bit(i + j)) {
-                    found = false;
-                    i    += j; // Skip ahead to avoid checking overlapping ranges
-                    break;
-                }
-            }
-
-            if (found) {
-                for (uint32_t j = 0; j < count; j++)
-                    set_bit(i + j);
-
-                used_pages += count;
-                return i * PAGE_SIZE;
-            }
-        }
-
-        kstd::panic("Out of physical memory (alloc_pages)");
-        return 0; // Unreachable
+    uint32_t pmm::alloc_frames(uint32_t count) {
+        uint32_t addr = mem_mngr.alloc_units(count);
+        used_frames += count;
+        return addr;
     }
 
-    void pmm::free_pages(uint32_t base, uint32_t count) {
-        if (count == 0)
-            return;
-
-        uint32_t start = base / PAGE_SIZE;
-
-        if (start + count > MAX_PAGES)
-            kstd::panic("Invalid range in free_pages (free_pages)");
-
-        for (uint32_t i = 0; i < count; i++) {
-            if (!test_bit(start + i))
-                kstd::panic("Double free in free_pages (free_pages)");
-
-            clear_bit(start + i);
-        }
-
-        used_pages -= count;
+    void pmm::free_frames(uint32_t base, uint32_t count) {
+        mem_mngr.free_units(base, count);
+        used_frames -= count;
     }
 
-    uint32_t pmm::alloc_page() {
-        return alloc_pages(1);
+    uint32_t pmm::alloc_frame() {
+        return alloc_frames(1);
     }
 
-    void pmm::free_page(uint32_t addr) {
-        free_pages(addr, 1);
-    }
-
-    void pmm::set_bit(uint32_t bit) {
-        bitmap[bit / 32] |= (1 << (bit % 32));
-    }
-
-    void pmm::clear_bit(uint32_t bit) {
-        bitmap[bit / 32] &= ~(1 << (bit % 32));
-    }
-
-    bool pmm::test_bit(uint32_t bit) {
-        return bitmap[bit / 32] & (1 << (bit % 32));
+    void pmm::free_frame(uint32_t addr) {
+        free_frames(addr, 1);
     }
 
     void pmm::init_region(uint32_t base, uint32_t size) {
@@ -174,38 +144,43 @@ namespace mm {
             return;
 
         size -= size % PAGE_SIZE;
-        uint32_t start = base / PAGE_SIZE;
-        uint32_t pages = size / PAGE_SIZE;
 
-        for (uint32_t i = start; i < start + pages; i++) {
-            if (i >= MAX_PAGES)
-                break;
+        uint32_t frames = size / PAGE_SIZE;
+        if ((base / PAGE_SIZE) >= MAX_FRAMES)
+            return;
 
-            clear_bit(i);
-        }
+        if ((base / PAGE_SIZE) + frames > MAX_FRAMES)
+            frames = MAX_FRAMES - (base / PAGE_SIZE);
+
+        mem_mngr.mark_units_free(base, frames);
     }
 
     void pmm::deinit_region(uint32_t base, size_t size) {
         if (!size)
             return;
 
-        uint32_t start = align_down(base, PAGE_SIZE) / PAGE_SIZE;
-        uint32_t pages = align_up(base + size, PAGE_SIZE) / PAGE_SIZE - start;
+        uint32_t aligned_base = align_down(base, PAGE_SIZE);
+        uint32_t end          = align_up(base + size, PAGE_SIZE);
 
-        for (uint32_t i = start; i < start + pages; i++) {
-            set_bit(i);
-        }
+        if ((aligned_base / PAGE_SIZE) >= MAX_FRAMES)
+            return;
+
+        uint32_t frames = (end - aligned_base) / PAGE_SIZE;
+        if ((aligned_base / PAGE_SIZE) + frames > MAX_FRAMES)
+            frames = MAX_FRAMES - (aligned_base / PAGE_SIZE);
+
+        mem_mngr.mark_units_used(aligned_base, frames);
     }
 
     uint32_t pmm::free_memory() {
-        return (memory_size / PAGE_SIZE - used_pages) * PAGE_SIZE;
+        return (available_frames - used_frames) * PAGE_SIZE;
     }
 
     uint32_t pmm::used_memory() {
-        return used_pages * PAGE_SIZE;
+        return used_frames * PAGE_SIZE;
     }
 
     uint32_t pmm::total_memory() {
-        return memory_size;
+        return available_frames * PAGE_SIZE;
     }
 }

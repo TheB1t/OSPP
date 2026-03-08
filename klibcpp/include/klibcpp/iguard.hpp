@@ -1,9 +1,10 @@
 #pragma once
 
 #include <klibcpp/cstdint.hpp>
+#include <klibcpp/trivial.hpp>
 
 namespace kstd {
-    class InterruptGuard {
+    class InterruptGuard : public NonTransferable {
         public:
             InterruptGuard() : should_enable(false) {
                 uint32_t flags;
@@ -25,11 +26,6 @@ namespace kstd {
                 if (should_enable)
                     __asm__ volatile ("sti");
             }
-
-            InterruptGuard(const InterruptGuard&)            = delete;
-            InterruptGuard& operator=(const InterruptGuard&) = delete;
-            InterruptGuard(InterruptGuard&&)                 = delete;
-            InterruptGuard& operator=(InterruptGuard&&)      = delete;
 
         private:
             bool should_enable;

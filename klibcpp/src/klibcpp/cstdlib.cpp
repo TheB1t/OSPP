@@ -33,7 +33,7 @@ void operator delete[](void* ptr, size_t size) noexcept {
     operator delete(ptr, size);
 }
 
-void* operator new(size_t size, align_val_t alignment) {
+void* operator new(size_t size, std::align_val_t alignment) {
     if (api.kmalloc)
         return api.kmalloc(size, (uint32_t)alignment > 0);
 
@@ -41,17 +41,21 @@ void* operator new(size_t size, align_val_t alignment) {
     return (void*)0xDEADADDD; // Unreachable, warn suppression
 }
 
-void operator delete(void* ptr, align_val_t alignment) noexcept {
+void operator delete(void* ptr, std::align_val_t alignment) noexcept {
     (void)alignment;
     if (api.kfree)
         api.kfree(ptr);
 }
 
-void* operator new[](size_t size, align_val_t alignment) {
+void* operator new[](size_t size, std::align_val_t alignment) {
     return operator new(size, alignment);
 }
 
-void operator delete[](void* ptr, align_val_t alignment) noexcept {
+void operator delete[](void* ptr, std::align_val_t alignment) noexcept {
+    operator delete(ptr, alignment);
+}
+
+void operator delete(void* ptr, uint32_t, std::align_val_t alignment) noexcept {
     operator delete(ptr, alignment);
 }
 

@@ -45,6 +45,6 @@
             ],
             "MIMode": "gdb",
             "preLaunchTask": "Launch QEMU"
-        }
+	}
     ]
 }

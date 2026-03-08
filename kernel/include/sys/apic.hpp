@@ -1,7 +1,8 @@
 #pragma once
 
 #include <klibcpp/cstdint.hpp>
-#include <klibcpp/vector.hpp>
+#include <klibcpp/static_array.hpp>
+#include <klibcpp/trivial.hpp>
 #include <sys/acpi.hpp>
 #include <io/msr.hpp>
 #include <driver/pic.hpp>
@@ -65,6 +66,8 @@ enum class LAPICRegister : uint32_t {
 struct LAPIC {
     volatile uint32_t* base;
 
+    LAPIC(volatile uint32_t base) : base(reinterpret_cast<uint32_t*>(base)) {}
+
     struct Register : public RegisterBase<Register, uint32_t> {
         LAPIC*              lapic;
         const LAPICRegister reg;
@@ -110,17 +113,45 @@ struct LAPIC {
         );
     }
 
-    inline Register operator[](const LAPICRegister reg) {
+    inline Register get_reg(const LAPICRegister reg) {
         return Register(this, reg);
     }
 
-    LAPIC& operator=(uint32_t value) {
-        base = (volatile uint32_t*)value;
-        return *this;
+    inline Register operator[](const LAPICRegister reg) {
+        return get_reg(reg);
     }
 
     operator bool() const {
         return base != 0;
+    }
+
+    void EOI() {
+        get_reg(LAPICRegister::EOI) = (uint32_t)0;
+    }
+
+    void enable() {
+        static constexpr uint32_t BASE_MSR        = 0x1B;
+        static constexpr uint32_t BASE_MSR_ENABLE = 0x800;
+
+        write_msr(BASE_MSR, (read_msr(BASE_MSR) | BASE_MSR_ENABLE) & ~(1 << 10));
+        get_reg(LAPICRegister::SIVR) |= 0x1FF;
+    }
+
+    void send_ipi(uint8_t ap, uint32_t ipi_number) {
+        get_reg(LAPICRegister::ICR1) = (ap << 24);
+        get_reg(LAPICRegister::ICR0) = ipi_number;
+    }
+
+    void send_init_ipi(uint8_t ap) {
+        send_ipi(ap, 0x500);
+    }
+
+    void send_startup_ipi(uint8_t ap, uint32_t entry) {
+        send_ipi(ap, 0x600 | entry);
+    }
+
+    uint8_t id() {
+        return (get_reg(LAPICRegister::ID) >> 24) & 0xFF;
     }
 };
 
@@ -247,70 +278,33 @@ namespace madt {
     } __packed;
 };
 
-class apic {
+class apic : public NonTransferable {
     public:
         struct MADT : public acpi::SDTHeader {
             uint32_t local_apic_addr;
             uint32_t apic_flags;
         } __packed;
 
-        kstd::vector<madt::ent0> lapics;
-        kstd::vector<madt::ent1> ioapics;
-        kstd::vector<madt::ent2> irq_overrides;
-        kstd::vector<madt::ent3> nmi_sources;
-        kstd::vector<madt::ent4> lint_sources;
+        kstd::StaticArray<madt::ent0, 64> lapics;
+        kstd::StaticArray<madt::ent1, 64> ioapics;
+        kstd::StaticArray<madt::ent2, 64> irq_overrides;
+        kstd::StaticArray<madt::ent3, 64> nmi_sources;
+        kstd::StaticArray<madt::ent4, 64> lint_sources;
 
-        LAPIC lapic_base;
+        uint32_t lapic_base;
 
-        static apic* get() {
-            static apic* instance = new apic();
-            return instance;
-        }
-
-        apic(const apic&)            = delete;
-        apic& operator=(const apic&) = delete;
-
-        void EOI() {
-            lapic_base[LAPICRegister::EOI] = (uint32_t)0;
-        }
-
-        void enable() {
-            write_msr(BASE_MSR, (read_msr(BASE_MSR) | BASE_MSR_ENABLE) & ~(1 << 10));
-            lapic_base[LAPICRegister::SIVR] |= 0x1FF;
-        }
-
-        void send_ipi(uint8_t ap, uint32_t ipi_number) {
-            lapic_base[LAPICRegister::ICR1] = (ap << 24);
-            lapic_base[LAPICRegister::ICR0] = ipi_number;
-        }
-
-        void send_init_ipi(uint8_t ap) {
-            send_ipi(ap, 0x500);
-        }
-
-        void send_startup_ipi(uint8_t ap, uint32_t entry) {
-            send_ipi(ap, 0x600 | entry);
-        }
-
-        uint8_t get_lapic_id() {
-            return (lapic_base[LAPICRegister::ID] >> 24) & 0xFF;
-        }
-
-        template<typename T>
-        inline T safe_copy_entry(const void* src) {
-            T dest;
-            memcpy((uint8_t*)&dest, (uint8_t*)src, sizeof(T));
-            return dest;
+        LAPIC get_lapic() {
+            return LAPIC{lapic_base};
         }
 
         void init() {
             auto madt = acpi::find_sdth<MADT>("APIC");
             if (!madt) {
-                LOG_INFO("[apic] Can't find MADT\n");
+                LOG_WARN("[apic] MADT not found\n");
                 return;
             }
 
-            uint32_t lapic = madt->local_apic_addr;
+            lapic_base = madt->local_apic_addr;
             LOG_INFO("[apic] MADT found at 0x%08x\n", madt);
             mm::vmm::map_page((uint32_t)madt, (uint32_t)madt, mm::Flags::Present | mm::Flags::Writable);
 
@@ -324,16 +318,18 @@ class apic {
                 switch (ent->type) {
                     case madt::ent_type::LAPIC: {
                         auto ent0 = reinterpret_cast<madt::ent0*>(ent);
-                        LOG_INFO("    LAPIC: ACPI ID %2d, APIC ID %2d, flags 0x%08x\n", ent0->acpi_processor_id,
+                        LOG_INFO("[apic] LAPIC: ACPI ID %2d, APIC ID %2d, flags 0x%08x\n", ent0->acpi_processor_id,
                             ent0->apic_id, ent0->cpu_flags);
-                        lapics.push_back(safe_copy_entry<madt::ent0>(ent));
+
+                        lapics.emplace(*ent0);
                         break;
                     }
                     case madt::ent_type::IOAPIC: {
                         auto ent1 = reinterpret_cast<madt::ent1*>(ent);
-                        LOG_INFO("    IOAPIC: ID %d, addr 0x%08x, GSI base 0x%08x\n", ent1->ioapic_id,
+                        LOG_INFO("[apic] IOAPIC: ID %d, addr 0x%08x, GSI base 0x%08x\n", ent1->ioapic_id,
                             ent1->ioapic.base, ent1->gsi_base);
-                        ioapics.push_back(safe_copy_entry<madt::ent1>(ent));
+
+                        ioapics.emplace(*ent1);
 
                         mm::vmm::map_page((uint32_t)ent1->ioapic.base, (uint32_t)ent1->ioapic.base,
                             mm::Flags::Present | mm::Flags::Writable);
@@ -341,33 +337,36 @@ class apic {
                     }
                     case madt::ent_type::IOAPIC_ISR_OVERRIDE: {
                         auto ent2 = reinterpret_cast<madt::ent2*>(ent);
-                        LOG_INFO("    IRQ override: bus %2d, IRQ %2d, GSI %2d, flags 0x%04x\n", ent2->bus_src,
+                        LOG_INFO("[apic] IRQ override: bus %2d, IRQ %2d, GSI %2d, flags 0x%04x\n", ent2->bus_src,
                             ent2->irq_src, ent2->gsi, ent2->flags);
-                        irq_overrides.push_back(safe_copy_entry<madt::ent2>(ent));
+
+                        irq_overrides.emplace(*ent2);
                         break;
                     }
                     case madt::ent_type::IOAPIC_NMI_SOURCE: {
                         auto ent3 = reinterpret_cast<madt::ent3*>(ent);
-                        LOG_INFO("    NMI source: src %d, flags 0x%08x, GSI 0x%08x\n", ent3->nmi_src, ent3->flags,
+                        LOG_INFO("[apic] NMI source: src %d, flags 0x%08x, GSI 0x%08x\n", ent3->nmi_src, ent3->flags,
                             ent3->gsi);
-                        nmi_sources.push_back(safe_copy_entry<madt::ent3>(ent));
+
+                        nmi_sources.emplace(*ent3);
                         break;
                     }
                     case madt::ent_type::LAPIC_NMI: {
                         auto ent4 = reinterpret_cast<madt::ent4*>(ent);
-                        LOG_INFO("    LINT: ACPI ID %d, flags 0x%04x, LINT %d\n", ent4->acpi_processor_id, ent4->flags,
+                        LOG_INFO("[apic] LINT: ACPI ID %d, flags 0x%04x, LINT %d\n", ent4->acpi_processor_id, ent4->flags,
                             ent4->lint);
-                        lint_sources.push_back(safe_copy_entry<madt::ent4>(ent));
+
+                        lint_sources.emplace(*ent4);
                         break;
                     }
                     case madt::ent_type::LAPIC_ADDR_OVERRIDE: {
                         auto ent5 = reinterpret_cast<madt::ent5*>(ent);
-                        LOG_INFO("    LAPIC override at 0x%08x\n", ent5->local_apic_override);
-                        lapic = ent5->local_apic_override;
+                        LOG_INFO("[apic] LAPIC override at 0x%08x\n", ent5->local_apic_override);
+                        lapic_base = ent5->local_apic_override;
                         break;
                     }
                     default:
-                        LOG_INFO("    Unknown entry type %d\n", ent->type);
+                        LOG_INFO("[apic] Unknown MADT entry type %d\n", ent->type);
                 }
 
                 ent         = reinterpret_cast<madt::entX*>(reinterpret_cast<uint8_t*>(ent) + current_length);
@@ -376,15 +375,13 @@ class apic {
 
             mm::vmm::unmap_page((uint32_t)madt);
 
-            LOG_INFO("[apic] LAPIC base: 0x%08x\n", lapic);
-            mm::vmm::map_page(lapic, lapic, mm::Flags::Present | mm::Flags::Writable);
-
-            lapic_base = lapic;
+            LOG_INFO("[apic] LAPIC base: 0x%08x\n", lapic_base);
+            mm::vmm::map_page(lapic_base, lapic_base, mm::Flags::Present | mm::Flags::Writable);
         }
 
         void configure() {
             bool    legacy_mapped_irqs[16] = {};
-            uint8_t lapic_id               = get_lapic_id();
+            uint8_t lapic_id               = get_lapic().id();
 
             for (auto& ioapic : ioapics) {
                 uint32_t gsi_max = get_gsi_max(&ioapic) + ioapic.gsi_base;
@@ -401,7 +398,7 @@ class apic {
                             if (irq.gsi < 16)
                                 legacy_mapped_irqs[irq.gsi] = 1;
 
-                            LOG_INFO("    %3u GSI -> %3u IRQ\n", irq.gsi, irq.irq_src);
+                            LOG_INFO("[apic][IOAPIC#%d] %3u GSI -> %3u IRQ\n", ioapic.ioapic_id, irq.gsi, irq.irq_src);
                         }
                     }
                 }
@@ -413,17 +410,13 @@ class apic {
                     madt::ent1* ioapic = find_valid_ioapic(i);
                     redirect_gsi(ioapic, i, (uint32_t)i, 0, lapic_id);
 
-                    LOG_INFO("    %3u GSI -> %3u IRQ\n", i, i);
+                    LOG_INFO("[apic] %3u GSI -> %3u IRQ\n", i, i);
                 }
             }
         }
 
     private:
-        static constexpr uint32_t BASE_MSR                = 0x1B;
-        static constexpr uint32_t BASE_MSR_ENABLE         = 0x800;
         static constexpr uint64_t REDIRECT_TABLE_BAD_READ = 0xFFFFFFFFFFFFFFFF;
-
-        apic() = default;
 
         uint8_t get_gsi_max(madt::ent1* ioapic) {
             uint32_t data    = ioapic->ioapic[1];

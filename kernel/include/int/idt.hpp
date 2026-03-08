@@ -6,43 +6,43 @@
 #include <io/ports.hpp>
 
 namespace idt {
-    struct BaseInterruptContext {
+    struct BaseInterruptFrame {
         uint32_t eip, cs, eflags;
         uint32_t user_esp, user_ss; // SP and SS pushed only if CPL!=RPL
     } __packed;
 
-    struct InterruptContext {
-        uint32_t             ds, es, fs, gs;
-        uint32_t             edi, esi, ebp, esp, ebx, edx, ecx, eax;
-        uint32_t             int_no, err_code;
+    struct InterruptFrame {
+        uint32_t           ds, es, fs, gs;
+        uint32_t           edi, esi, ebp, esp, ebx, edx, ecx, eax;
+        uint32_t           int_no, err_code;
 
-        BaseInterruptContext base;
+        BaseInterruptFrame base;
 
         /*
             !!! WARNING !!!
 
             This method must be used exclusively with the original pointer to
-            BaseInterruptContext provided by IRQ/ISR handlers. These handlers
-            are responsible for constructing an InterruptContext on top of
-            the BaseInterruptContext.
+            BaseInterruptFrame provided by IRQ/ISR handlers. These handlers
+            are responsible for constructing an InterruptFrame on top of
+            the BaseInterruptFrame.
 
             Invoking this method in any other context may lead to undefined
             behavior.
 
-            Note: GNU interrupt handlers instantiate only BaseInterruptContext.
+            Note: GNU interrupt handlers instantiate only BaseInterruptFrame.
 
             Use with extreme caution.
         */
-        static InterruptContext* from_base(BaseInterruptContext* base) {
-            // Calculate the offset of `base` inside `InterruptContext`
-            constexpr size_t offset = __builtin_offsetof(InterruptContext, base);
-            // Subtract the offset to get the enclosing `InterruptContext*`
-            return reinterpret_cast<InterruptContext*>(reinterpret_cast<char*>(base) - offset);
+        static InterruptFrame* from_base(BaseInterruptFrame* base) {
+            // Calculate the offset of `base` inside `InterruptFrame`
+            constexpr size_t offset = __builtin_offsetof(InterruptFrame, base);
+            // Subtract the offset to get the enclosing `InterruptFrame*`
+            return reinterpret_cast<InterruptFrame*>(reinterpret_cast<char*>(base) - offset);
         }
 
     } __packed;
 
-    void isr_handler(uint8_t no, uint32_t err, bool has_ext, void* ctx_ptr);
+    void isr_handler(uint8_t no, uint32_t err, void* ctx_ptr);
 }
 
 /*
@@ -53,12 +53,12 @@ namespace idt {
 #pragma GCC target ("general-regs-only")
 template<int N>
 __interrupt void isr_wrapper_no_err(void* ctx) {
-    idt::isr_handler(N, 0, false,ctx);
+    idt::isr_handler(N, 0, ctx);
 }
 
 template<int N>
 __interrupt void isr_wrapper_err(void* ctx, uint32_t err) {
-    idt::isr_handler(N, err, false, ctx);
+    idt::isr_handler(N, err, ctx);
 }
 
 template<int N>
@@ -90,17 +90,16 @@ __naked void context_switch() {
          "mov %%ax, %%gs\n"
 
          "mov %%esp, %%eax\n"
-         "add %[base_offset], %%eax\n"           // eax = &BaseInterruptContext
+         "add %[base_offset], %%eax\n"           // eax = &BaseInterruptFrame
 
-         "push %%eax\n"                          // ctx = &BaseInterruptContext
-         "push $1\n"                             // has_ext = true
+         "push %%eax\n"                          // ctx = &BaseInterruptFrame
          "push $0\n"                             // err = 0
          "push %[int_no]\n"                      // int_no = N
 
          "mov %[handler], %%eax\n"               // eax = &idt::isr_handler
-         "call *%%eax\n"                         // call idt::isr_handler(N, 0, true, &BaseInterruptContext)
+         "call *%%eax\n"                         // call idt::isr_handler(N, 0, true, &BaseInterruptFrame)
 
-         "add $16, %%esp\n"                      // pop args, 4 * 4 = 16
+         "add $12, %%esp\n"                      // pop args, 4 * 3 = 12
 
          "xor %%eax, %%eax\n"
 
@@ -123,7 +122,7 @@ __naked void context_switch() {
          "iret\n"
          :
          : [int_no] "i" (N),
-           [base_offset] "i" (__builtin_offsetof(idt::InterruptContext, base)),
+           [base_offset] "i" (__builtin_offsetof(idt::InterruptFrame, base)),
            [handler] "i" (&idt::isr_handler)
          : "memory", "eax"
     );
@@ -131,25 +130,58 @@ __naked void context_switch() {
 #pragma GCC pop_options
 
 namespace idt {
+    enum class InterruptFrameKind : uint8_t {
+        Base,
+        ContextSwitch,
+    };
+
+    struct ISRDescritpor {
+        uint32_t           entry;
+        InterruptFrameKind kind;
+        bool               has_error_code;
+    };
+
     template <int N>
-    constexpr uint32_t get_isr_wrapper() {
-        if constexpr (N == 32 || N == 14 || N == 33)
-            return (uint32_t)&context_switch<N>;
+    constexpr ISRDescritpor get_isr_wrapper() {
+        if constexpr (N == 32 || N == 48)
+            return {
+                .entry          = (uint32_t)&context_switch<N>,
+                .kind           = InterruptFrameKind::ContextSwitch,
+                .has_error_code = false
+            };
 
         if constexpr (N == 8 || N == 10 || N == 11 || N == 12 || N == 13 || N == 14 || N == 17 || N == 21)
-            return (uint32_t)&isr_wrapper_err<N>;
+            return {
+                .entry          = (uint32_t)&isr_wrapper_err<N>,
+                .kind           = InterruptFrameKind::Base,
+                .has_error_code = true
+            };
 
-        return (uint32_t)&isr_wrapper_no_err<N>;
+        return {
+            .entry          = (uint32_t)&isr_wrapper_no_err<N>,
+            .kind           = InterruptFrameKind::Base,
+            .has_error_code = false
+        };
     }
 
     template <size_t... IntNums>
     constexpr auto make_isr_table_impl(kstd::index_sequence<IntNums...>) {
-        return kstd::array<uint32_t, sizeof...(IntNums)>{{
+        return kstd::array<ISRDescritpor, sizeof...(IntNums)>{{
             get_isr_wrapper<IntNums>()...
         }};
     }
 
-    const kstd::array<uint32_t, 256> isr_table = make_isr_table_impl(kstd::make_index_sequence<256>{});
+    const kstd::array<ISRDescritpor, 256> isr_table = make_isr_table_impl(kstd::make_index_sequence<256>{});
+
+    template<uint8_t N>
+    InterruptFrameKind get_isr_frame_kind() {
+        return isr_table[N].kind;
+    }
+
+    template<uint8_t N>
+    InterruptFrameKind get_irq_frame_kind() {
+        return isr_table[32 + N].kind;
+    }
 
     struct Entry {
         uint16_t offset_low;
@@ -221,8 +253,8 @@ namespace idt {
         "ATA2",
     };
 
-    using ISRHandler = void (*)(uint32_t, bool, BaseInterruptContext*);
-    using IRQHandler = void (*)(bool, BaseInterruptContext*);
+    using ISRHandler = void (*)(uint32_t, BaseInterruptFrame*);
+    using IRQHandler = void (*)(BaseInterruptFrame*);
 
     void init();
     void register_isr(uint8_t vector, ISRHandler handler);

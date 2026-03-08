@@ -64,4 +64,6 @@ typedef	unsigned char      uint8_t;
 typedef          char      int8_t;
 typedef uint32_t           size_t;
 
-enum class align_val_t : size_t {};
+namespace std {
+    enum class align_val_t : size_t {};
+}
