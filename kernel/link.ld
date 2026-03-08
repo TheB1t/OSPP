@@ -42,19 +42,19 @@ SECTIONS {
     }
 
 	.text : ALIGN(4K) {
-		*(.text)
+		*(.text*)
 	}
 
 	/* Read-write data (initialized) && read-only data */
 	.data : ALIGN(4K) {
-		*(.data)
-        *(.rodata)
+		*(.data*)
+        *(.rodata*)
 	}
 
 	/* Read-write data (uninitialized) and stack */
 	.bss : ALIGN(4K) {
 		*(COMMON)
-		*(.bss)
+		*(.bss*)
 	}
 
     __kernel_end = .;

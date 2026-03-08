@@ -3,6 +3,7 @@
 #include <icxxabi.hpp>
 #include <int/gdt.hpp>
 #include <int/idt.hpp>
+#include <mm/layout.hpp>
 #include <mm/pmm.hpp>
 #include <mm/vmm.hpp>
 #include <klibcpp/cstdlib.hpp>
@@ -16,6 +17,7 @@
 #include <driver/serial.hpp>
 #include <sys/acpi.hpp>
 #include <sys/kexp.hpp>
+#include <multiboot_utils.hpp>
 #include <log.hpp>
 
 #if defined(KERNEL_SELF_TESTS)
@@ -37,7 +39,7 @@ alignas(Kernel) static uint8_t kernel_storage[sizeof(Kernel)];
 void Kernel::init(multiboot_info_t* mboot) {
     memcpy((uint8_t*)&_mboot, (uint8_t*)mboot, sizeof(multiboot_info_t));
 
-    LOG_INFO("[boot] Loaded %d modules\n", _mboot.mods_count);
+    LOG_INFO("[boot] Loaded %d modules\n", multiboot::module_count(_mboot));
     LOG_INFO("[boot] Loaded %s table\n",
         _mboot.flags & MULTIBOOT_INFO_AOUT_SYMS    ? "symbol" :
         _mboot.flags & MULTIBOOT_INFO_ELF_SHDR     ? "section" : "no one"
@@ -64,16 +66,15 @@ void Kernel::init(multiboot_info_t* mboot) {
         Initializing the kernel heap. Attempting to use it before this point
         will result in a page fault or other undefined behavior.
     */
-    _heap.construct(0x01000000, HEAP_MIN_SIZE, 0x02000000, mm::Present | mm::Writable);
-
-    multiboot_module_t* mod       = (multiboot_module_t*)_mboot.mods_addr;
-    uint32_t            mod_count = _mboot.mods_count;
+    constexpr const auto& heap_region = mm::layout::virt::region<mm::layout::virt::RegionId::KernelHeap>();
+    _heap.construct(heap_region.base, HEAP_MIN_SIZE, static_cast<uint32_t>(heap_region.end()),
+        mm::Present | mm::Writable);
 
     _linker.construct();
     _mmanager.construct(_linker.ptr_if_constructed());
-    for (uint32_t i = 0; i < mod_count; i++) {
-        _mmanager->registerModule((void*)mod->mod_start);
-    }
+    multiboot::for_each_module(_mboot, [&](uint32_t, const multiboot_module_t& module) {
+            _mmanager->registerModule(reinterpret_cast<void*>(module.mod_start));
+        });
 
     _apic.construct();
     _apic->init();

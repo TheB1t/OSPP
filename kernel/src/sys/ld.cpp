@@ -67,6 +67,8 @@ namespace {
 }
 
 Linker::Layout* Linker::load(Object* obj) {
+    kstd::InterruptSpinLockGuard guard(lock_);
+
     if (!obj) {
         LOG_ERR("[linker] load: null object\n");
         return nullptr;
@@ -90,14 +92,28 @@ Linker::Layout* Linker::load(Object* obj) {
     return layout;
 
 _Lerror:
-    if (layout) {
-        if (layout->map) {
-            delete[] layout->map;
-            layout->map = nullptr;
-        }
-        delete layout;
-    }
+    unload_locked(layout);
     return nullptr;
+}
+
+Linker::~Linker() {
+    kstd::InterruptSpinLockGuard guard(lock_);
+
+    while (!layouts.empty()) {
+        for (size_t i = 0; i < layouts.capacity(); ++i) {
+            Layout* layout = layouts.ptr(i);
+            if (!layout)
+                continue;
+
+            unload_locked(layout);
+            break;
+        }
+    }
+}
+
+void Linker::unload(Layout* layout) {
+    kstd::InterruptSpinLockGuard guard(lock_);
+    unload_locked(layout);
 }
 
 bool Linker::stage0(Layout* layout, Object* obj) {
@@ -190,11 +206,13 @@ bool Linker::stage1(Region* reg, Object* obj) {
 
     const uint32_t pages = reg->size / mm::PAGE_SIZE;
 
-    // reg->base = mem_mngr.alloc_units(pages);
+    reg->base = mem_mngr.alloc_units(pages);
 
     uint32_t phys = mm::pmm::alloc_frames(pages);
 
     if (!phys) {
+        mem_mngr.free_units(reg->base, pages);
+        reg->base = 0;
         LOG_WARN("[linker] stage1: out of physical memory\n");
         return false;
     }
@@ -228,6 +246,34 @@ bool Linker::stage1(Region* reg, Object* obj) {
     }
 
     return true;
+}
+
+void Linker::unload_region_locked(Region& reg) {
+    if (!reg.base || !reg.size)
+        return;
+
+    const uint32_t pages = reg.size / mm::PAGE_SIZE;
+
+    mm::vmm::unmap_pages(reg.base, pages);
+    mem_mngr.free_units(reg.base, pages);
+
+    reg.base = 0;
+}
+
+void Linker::unload_locked(Layout* layout) {
+    if (!layout)
+        return;
+
+    unload_region_locked(layout->rw);
+    unload_region_locked(layout->rx);
+
+    const size_t index = layouts.index_of(layout);
+    if (index == kstd::StaticArray<Layout, 64>::npos) {
+        LOG_ERR("[linker] unload: layout is not tracked\n");
+        return;
+    }
+
+    layouts.erase(index);
 }
 
 bool Linker::stage2(Layout* layout) {

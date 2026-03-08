@@ -1,5 +1,6 @@
 #pragma once
 
+#include <klibcpp/spinlock.hpp>
 #include <klibcpp/cstring.hpp>
 #include <klibcpp/cstdlib.hpp>
 
@@ -23,19 +24,20 @@ namespace Log {
     };
 
     static const LogLevel        global_level = Log::ALL;
+    inline kstd::SpinLock        output_lock;
 
     template <typename... Args>
     static void printf(LogLevel level, const char* file, int line, const char* func, const char* fmt,
         const Args&... args) {
-        kstd::InterruptGuard guard;
-
         if (level > global_level)
             return;
 
-        static constexpr size_t BUFFER_SIZE = 256;
-        size_t                  remaining   = BUFFER_SIZE;
-        char  buffer[BUFFER_SIZE];
-        char* pos = buffer;
+        kstd::InterruptSpinLockGuard guard(output_lock);
+
+        static constexpr size_t      BUFFER_SIZE = 256;
+        size_t remaining = BUFFER_SIZE;
+        char   buffer[BUFFER_SIZE];
+        char*  pos       = buffer;
 
         memset((uint8_t*)buffer, 0, BUFFER_SIZE);
 

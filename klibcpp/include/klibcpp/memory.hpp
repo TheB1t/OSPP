@@ -1,5 +1,6 @@
 #pragma once
 
+#include <klibcpp/atomic.hpp>
 #include <klibcpp/utility.hpp>
 #include <klibcpp/cstdlib.hpp>
 #include <klibcpp/cstdint.hpp>
@@ -18,7 +19,7 @@ namespace kstd {
             shared_ptr(const shared_ptr& other) {
                 block = other.block;
                 if (block)
-                    ++block->refcount;
+                    block->refcount.fetch_add(1, MemoryOrder::AcqRel);
             }
 
             shared_ptr(shared_ptr&& other) noexcept
@@ -31,7 +32,7 @@ namespace kstd {
                     release();
                     block = other.block;
                     if (block)
-                        ++block->refcount;
+                        block->refcount.fetch_add(1, MemoryOrder::AcqRel);
                 }
                 return *this;
             }
@@ -62,7 +63,7 @@ namespace kstd {
             }
 
             uint32_t use_count() const {
-                return block ? block->refcount : 0;
+                return block ? block->refcount.load(MemoryOrder::Acquire) : 0;
             }
 
             explicit operator bool() const {
@@ -84,8 +85,8 @@ namespace kstd {
 
         private:
             struct ptr_block {
-                T*       ptr;
-                uint32_t refcount;
+                T*                     ptr;
+                kstd::Atomic<uint32_t> refcount;
             };
 
             ptr_block* block;
@@ -97,7 +98,7 @@ namespace kstd {
                 ptr_block* old = block;
                 block = nullptr;
 
-                if (--old->refcount == 0) {
+                if (old->refcount.fetch_sub(1, MemoryOrder::AcqRel) == 1) {
                     if (old->ptr)
                         delete old->ptr;
 

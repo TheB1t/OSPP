@@ -1,5 +1,7 @@
 #pragma once
 
+#include <klibcpp/atomic.hpp>
+#include <klibcpp/spinlock.hpp>
 #include <klibcpp/static_array.hpp>
 #include <klibcpp/cstdint.hpp>
 #include <klibcpp/trivial.hpp>
@@ -67,8 +69,9 @@ namespace sched {
             kstd::StaticArray<Task, 256> tasks;
             uint32_t current_task_index;
             uint32_t next_task_id;
-            bool initialized;
+            kstd::Atomic<bool> initialized;
             uint32_t time_slice_ms;
+            kstd::SpinLock lock;
 
             static void timer_tick(idt::InterruptFrame* ctx, void*);
 
@@ -76,7 +79,7 @@ namespace sched {
             Scheduler(uint32_t time_slice_ms = 10);
             ~Scheduler();
 
-            bool is_initialized() const { return initialized; }
+            bool is_initialized() const { return initialized.load(kstd::MemoryOrder::Acquire); }
 
             Task&       create_task(const char* name, void (*entry_point)());
 

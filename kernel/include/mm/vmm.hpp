@@ -1,15 +1,17 @@
 #pragma once
 
 #include <klibcpp/kstd.hpp>
+#include <klibcpp/spinlock.hpp>
 #include <klibcpp/cstdlib.hpp>
 #include <klibcpp/cstdint.hpp>
 #include <klibcpp/cstring.hpp>
 #include <int/idt.hpp>
+#include <mm/layout.hpp>
 #include <mm/pmm.hpp>
 
 namespace mm {
-    static constexpr uint32_t PDE_BASE  = 0xFFFFF000;
-    static constexpr uint32_t PT_BASE   = 0xFFC00000;
+    static constexpr uint32_t PDE_BASE  = layout::virt::RECURSIVE_PD_BASE;
+    static constexpr uint32_t PT_BASE   = layout::virt::RECURSIVE_PT_BASE;
     static constexpr uint32_t PAGE_MASK = 0xFFFFF000;
 
     enum Flags : uint32_t {
@@ -88,6 +90,7 @@ namespace mm {
 
     class vmm {
         public:
+            static constexpr uint8_t TLB_SHOOTDOWN_VECTOR = 49;
             static uint32_t kernel_dir_phys;
 
             static void init() {
@@ -104,7 +107,7 @@ namespace mm {
                 memset(reinterpret_cast<uint8_t*>(pd), 0, PAGE_SIZE);
                 memset(reinterpret_cast<uint8_t*>(pt), 0, PAGE_SIZE);
 
-                for (uint32_t i = 0; i < 1024; ++i) {
+                for (uint32_t i = 0; i < (layout::virt::IDENTITY_WINDOW_SIZE / PAGE_SIZE); ++i) {
                     pt[i].set_address(i * PAGE_SIZE);
                     pt[i].update_flags(Present | Writable);
                 }
@@ -116,6 +119,7 @@ namespace mm {
                 pd[1023].update_flags(Present | Writable);
 
                 idt::register_isr(14, page_fault);
+                idt::register_isr(TLB_SHOOTDOWN_VECTOR, tlb_shootdown_handler);
 
                 kernel_dir_phys = pd_phys;
                 load_directory(kernel_dir_phys);
@@ -123,52 +127,60 @@ namespace mm {
             }
 
             static void map_page(uint32_t virt_addr, uint32_t phys_addr, uint32_t flags) {
-                virt_addr = align_address(virt_addr).aligned;
-                phys_addr = align_address(phys_addr).aligned;
-
-                ensure_page_table(virt_addr, flags);
-
-                Entry& pte = pte_entry(virt_addr);
-                pte.invalidate();
-                pte.set_address(phys_addr);
-                pte.update_flags(flags);
-
-                flush_tlb(virt_addr);
+                kstd::SpinLockGuard guard(lock_);
+                map_page_locked(virt_addr, phys_addr, flags);
+                flush_remote_tlbs();
             }
 
             static void map_pages(uint32_t virt_addr, uint32_t phys_addr, uint32_t pages, uint32_t flags) {
+                kstd::SpinLockGuard guard(lock_);
+
                 virt_addr = align_address(virt_addr).aligned;
                 phys_addr = align_address(phys_addr).aligned;
 
                 for (uint32_t i = 0; i < pages; ++i)
-                    map_page(virt_addr + i * PAGE_SIZE, phys_addr + i * PAGE_SIZE, flags);
+                    map_page_locked(virt_addr + i * PAGE_SIZE, phys_addr + i * PAGE_SIZE, flags);
+
+                flush_remote_tlbs();
+            }
+
+            static void map_identity_page(uint32_t addr, uint32_t flags) {
+                map_page(addr, addr, flags);
+            }
+
+            static void map_identity_pages(uint32_t addr, uint32_t pages, uint32_t flags) {
+                map_pages(addr, addr, pages, flags);
+            }
+
+            static void map_identity_span(uint32_t addr, uint32_t size, uint32_t flags) {
+                if (!size)
+                    return;
+
+                const AlignedResult aligned = align_address(addr);
+                const uint32_t      span    = align_up(aligned.offset + size, PAGE_SIZE);
+
+                map_identity_pages(aligned.aligned, span / PAGE_SIZE, flags);
             }
 
             static void unmap_page(uint32_t virt_addr) {
-                virt_addr = align_address(virt_addr).aligned;
-
-                Entry& pde = pde_entry(virt_addr);
-                if (!pde.has_flag(Present))
-                    return;
-
-                Entry& pte = pte_entry(virt_addr);
-                if (!pte.has_flag(Present))
-                    return;
-
-                pmm::free_frame(pte.address());
-                pte.invalidate();
-                flush_tlb(virt_addr);
+                kstd::SpinLockGuard guard(lock_);
+                unmap_page_locked(virt_addr);
+                flush_remote_tlbs();
             }
 
             static void unmap_pages(uint32_t virt_addr, uint32_t pages) {
+                kstd::SpinLockGuard guard(lock_);
                 virt_addr = align_address(virt_addr).aligned;
 
                 for (uint32_t i = 0; i < pages; ++i)
-                    unmap_page(virt_addr + i * PAGE_SIZE);
+                    unmap_page_locked(virt_addr + i * PAGE_SIZE);
+
+                flush_remote_tlbs();
             }
 
             static uint32_t virt_to_phys(uint32_t virt_addr) {
-                Entry& pde = pde_entry(virt_addr);
+                kstd::SpinLockGuard guard(lock_);
+                Entry&              pde = pde_entry(virt_addr);
                 if (!pde.has_flag(Present))
                     return 0xFFFFFFFF;
 
@@ -180,7 +192,8 @@ namespace mm {
             }
 
             static bool is_mapped(uint32_t virt_addr) {
-                Entry& pde = pde_entry(virt_addr);
+                kstd::SpinLockGuard guard(lock_);
+                Entry&              pde = pde_entry(virt_addr);
                 if (!pde.has_flag(Present))
                     return false;
 
@@ -200,6 +213,10 @@ namespace mm {
                 __asm__ volatile ("mov %%cr0, %0" : "=r"(cr0));
                 cr0 |= 0x80000000;
                 __asm__ volatile ("mov %0, %%cr0" : : "r"(cr0));
+            }
+
+            static inline void flush_current_tlb() {
+                load_directory(kernel_dir_phys);
             }
 
             static void page_fault(uint32_t err_code, idt::BaseInterruptFrame* ctx) {
@@ -223,6 +240,11 @@ namespace mm {
             }
 
         private:
+            inline static kstd::SpinLock lock_;
+
+            static void flush_remote_tlbs();
+            static void tlb_shootdown_handler(uint32_t err_code, idt::BaseInterruptFrame* ctx);
+
             static void ensure_page_table(uint32_t virt_addr, uint32_t flags) {
                 Entry& pde = pde_entry(virt_addr);
                 if (pde.has_flag(Present)) {
@@ -241,6 +263,36 @@ namespace mm {
                 // New page tables come from PMM as raw frames. Clear the recursive
                 // mapping view so untouched PTEs cannot inherit stale state.
                 memset(reinterpret_cast<uint8_t*>(pt_virtual_base(virt_addr)), 0, PAGE_SIZE);
+            }
+
+            static void map_page_locked(uint32_t virt_addr, uint32_t phys_addr, uint32_t flags) {
+                virt_addr = align_address(virt_addr).aligned;
+                phys_addr = align_address(phys_addr).aligned;
+
+                ensure_page_table(virt_addr, flags);
+
+                Entry& pte = pte_entry(virt_addr);
+                pte.invalidate();
+                pte.set_address(phys_addr);
+                pte.update_flags(flags);
+
+                flush_tlb(virt_addr);
+            }
+
+            static void unmap_page_locked(uint32_t virt_addr) {
+                virt_addr = align_address(virt_addr).aligned;
+
+                Entry& pde = pde_entry(virt_addr);
+                if (!pde.has_flag(Present))
+                    return;
+
+                Entry& pte = pte_entry(virt_addr);
+                if (!pte.has_flag(Present))
+                    return;
+
+                pmm::free_frame(pte.address());
+                pte.invalidate();
+                flush_tlb(virt_addr);
             }
     };
 }

@@ -57,6 +57,22 @@
 
 #define set_foot(p, s)           (chunk_plus_offset(p, s)->prevFoot = (s))
 
+namespace {
+    inline size_t align_heap_size(size_t size) {
+        return mm::align_up(size, mm::PAGE_SIZE);
+    }
+
+    inline void map_heap_backing(uint32_t virt_addr, size_t size, uint16_t perms) {
+        if (!size)
+            return;
+
+        uint32_t pages = size / mm::PAGE_SIZE;
+        uint32_t phys  = mm::pmm::alloc_frames(pages);
+
+        mm::vmm::map_pages(virt_addr, phys, pages, perms | mm::Flags::Present);
+    }
+}
+
 uint32_t heap_malloc(Heap* heap, uint32_t size, uint8_t align) {
     if (heap) {
         uint32_t addr;
@@ -112,6 +128,7 @@ void Heap::removeChunk(HeapChunk_t* chunk) {
 }
 
 Heap::Heap(uint32_t start, uint32_t size, uint32_t max, uint16_t perms) {
+    size = align_heap_size(size);
     uint32_t end = start + size;
     assert(start % mm::PAGE_SIZE == 0);
     assert(end % mm::PAGE_SIZE == 0);
@@ -122,8 +139,7 @@ Heap::Heap(uint32_t start, uint32_t size, uint32_t max, uint16_t perms) {
     this->perms		= perms;
     INIT_LIST_HEAD(get_head(this));
 
-    uint32_t phys = mm::pmm::alloc_frames(size / mm::PAGE_SIZE);
-    mm::vmm::map_pages(start, phys, size / mm::PAGE_SIZE, this->perms | mm::Flags::Present);
+    map_heap_backing(start, size, this->perms);
 
     HeapChunk_t* hole = (HeapChunk_t*)start;
     hole->prevFoot = 0;
@@ -132,31 +148,33 @@ Heap::Heap(uint32_t start, uint32_t size, uint32_t max, uint16_t perms) {
 }
 
 void Heap::expand(size_t newSize) {
+    kstd::InterruptSpinLockGuard guard(lock);
+    expand_unlocked(newSize);
+}
+
+void Heap::expand_unlocked(size_t newSize) {
     assert(newSize > this->endAddr - this->startAddr);
 
-    if (newSize % mm::PAGE_SIZE) {
-        newSize &= -mm::PAGE_SIZE;
-        newSize += mm::PAGE_SIZE;
-    }
+    newSize = align_heap_size(newSize);
 
     assert(this->startAddr + newSize <= this->maxAddr);
 
     uint32_t oldEnd = this->endAddr;
     this->endAddr = this->startAddr + newSize;
 
-    size_t   size = this->endAddr - oldEnd;
-    uint32_t phys = mm::pmm::alloc_frames(size / mm::PAGE_SIZE);
-
-    mm::vmm::map_pages(oldEnd, phys, size / mm::PAGE_SIZE, this->perms | mm::Flags::Present);
+    size_t size = this->endAddr - oldEnd;
+    map_heap_backing(oldEnd, size, this->perms);
 }
 
 size_t Heap::contract(size_t newSize) {
+    kstd::InterruptSpinLockGuard guard(lock);
+    return contract_unlocked(newSize);
+}
+
+size_t Heap::contract_unlocked(size_t newSize) {
     assert(newSize < this->endAddr - this->startAddr);
 
-    if (newSize % mm::PAGE_SIZE) {
-        newSize &= -mm::PAGE_SIZE;
-        newSize += mm::PAGE_SIZE;
-    }
+    newSize = align_heap_size(newSize);
 
     if (newSize < HEAP_MIN_SIZE)
         newSize = HEAP_MIN_SIZE;
@@ -178,13 +196,18 @@ size_t Heap::contract(size_t newSize) {
 }
 
 void* Heap::alloc(size_t size) {
+    kstd::InterruptSpinLockGuard guard(lock);
+    return alloc_unlocked(size);
+}
+
+void* Heap::alloc_unlocked(size_t size) {
     size_t       nb   = request2size(size);
 
     HeapChunk_t* hole = findSmallestChunk(nb);
     if (hole == 0) {
         size_t oldSize    = this->endAddr - this->startAddr;
         size_t oldEndAddr = this->endAddr;
-        expand(oldSize + nb);
+        expand_unlocked(oldSize + nb);
 
         struct list_head* tmp = 0;
         if (!list_empty(get_head(this))) {
@@ -220,7 +243,7 @@ void* Heap::alloc(size_t size) {
         set_size_and_pinuse(topChunk, csize);
         insertChunk(topChunk);
 
-        return alloc(size);
+        return alloc_unlocked(size);
     }
 
     assert(chunksize(hole) >= nb);
@@ -247,6 +270,11 @@ _Lassert:
 }
 
 void Heap::free(void* ptr) {
+    kstd::InterruptSpinLockGuard guard(lock);
+    free_unlocked(ptr);
+}
+
+void Heap::free_unlocked(void* ptr) {
     if (ptr == 0)
         return;
 
@@ -298,7 +326,7 @@ void Heap::free(void* ptr) {
         if (newSize % mm::PAGE_SIZE)
             newSize += MIN_CHUNK_SIZE;
 
-        newSize = contract(newSize);
+        newSize = contract_unlocked(newSize);
 
         if (size > oldSize - newSize)
             size -= oldSize - newSize;
@@ -323,10 +351,15 @@ _Lassert:
 }
 
 void* Heap::palignedAlloc(size_t size) {
+    kstd::InterruptSpinLockGuard guard(lock);
+    return palignedAlloc_unlocked(size);
+}
+
+void* Heap::palignedAlloc_unlocked(size_t size) {
     size_t nb  = request2size(size);
     size_t req = nb + mm::PAGE_SIZE + MIN_CHUNK_SIZE - CHUNK_OVERHEAD;
 
-    void*  mem = alloc(req);
+    void*  mem = alloc_unlocked(req);
     if (mem) {
         HeapChunk_t* chunk = mem2chunk(mem);
         if ((size_t)mem % mm::PAGE_SIZE) {
@@ -353,7 +386,7 @@ void* Heap::palignedAlloc(size_t size) {
             HeapChunk_t* remainder     = chunk_plus_offset(chunk, nb);
             set_inuse(chunk, nb);
             set_inuse(remainder, remainderSize);
-            free(chunk2mem(remainder));
+            free_unlocked(chunk2mem(remainder));
         }
 
         mem = chunk2mem(chunk);

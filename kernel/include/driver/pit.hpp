@@ -1,5 +1,7 @@
 #pragma once
 
+#include <klibcpp/atomic.hpp>
+#include <klibcpp/spinlock.hpp>
 #include <klibcpp/cstdint.hpp>
 #include <klibcpp/array.hpp>
 #include <int/idt.hpp>
@@ -48,8 +50,9 @@ class pit {
     private:
         static void     tick_handler(idt::BaseInterruptFrame* base_ctx);
 
-        static uint64_t tick_count;
+        static kstd::Atomic<uint64_t> tick_count;
         static uint32_t interval_us;
         static TimerHandler handlers[MAX_HANDLERS];
         static size_t handler_count;
+        static kstd::SpinLock handlers_lock;
 };

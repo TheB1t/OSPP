@@ -9,11 +9,13 @@ void warm_start_32() {
         They equal to BSP's GDT, IDT and Paging
     */
     kstd::init_fpu();
+    kstd::atomic_thread_fence(kstd::MemoryOrder::Acquire);
     smp::Core* core = smp::CoreManager::current_core();
+    core->lapic.enable();
 
     LOG_INFO("[smp] Core %u is ready\n", core->id);
 
-    core->initialized = true;
+    core->initialized.store(true, kstd::MemoryOrder::Release);
     smp::CoreManager::_pause(); // Go to sleep
 }
 

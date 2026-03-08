@@ -6,18 +6,18 @@
 
 namespace ktest {
     struct Session {
-        uint32_t    suite_count          = 0;
-        uint32_t    case_count           = 0;
-        uint32_t    check_count          = 0;
-        uint32_t    failure_count        = 0;
-        uint32_t    case_failure_marker  = 0;
+        uint32_t    suite_count         = 0;
+        uint32_t    case_count          = 0;
+        uint32_t    check_count         = 0;
+        uint32_t    failure_count       = 0;
+        uint32_t    case_failure_marker = 0;
 
-        const char* run_name             = nullptr;
-        const char* current_suite        = nullptr;
-        const char* current_case         = nullptr;
+        const char* run_name            = nullptr;
+        const char* current_suite       = nullptr;
+        const char* current_case        = nullptr;
 
-        bool        started              = false;
-        bool        completed            = false;
+        bool        started             = false;
+        bool        completed           = false;
 
         void start(const char* name) {
             if (started)
@@ -42,8 +42,8 @@ namespace ktest {
 
         void begin_case(const char* name) {
             ++case_count;
-            current_case         = name;
-            case_failure_marker  = failure_count;
+            current_case        = name;
+            case_failure_marker = failure_count;
 
             LOG_INFO("[ktest] Case %s\n", current_case);
         }

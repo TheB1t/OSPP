@@ -6,6 +6,7 @@
 
 #include <klibcpp/cstdint.hpp>
 #include <klibcpp/bitmap.hpp>
+#include <klibcpp/spinlock.hpp>
 #include <multiboot.hpp>
 
 __extern_asm symbol __kernel_end;
@@ -36,12 +37,14 @@ namespace mm {
             static void     free_frame(uint32_t addr);
             static uint32_t alloc_frames(uint32_t count);
             static void     free_frames(uint32_t base, uint32_t count);
+            static bool     frame_used(uint32_t addr);
             static uint32_t free_memory();
             static uint32_t used_memory();
             static uint32_t total_memory();
 
         private:
             static PMM mem_mngr;
+            static kstd::SpinLock lock;
 
             static uint32_t available_frames;
             static uint32_t used_frames;

@@ -67,7 +67,7 @@ namespace sched {
           initialized(false), time_slice_ms(time_slice_ms) {
         kstd::InterruptGuard guard;
 
-        if (initialized)
+        if (initialized.load(kstd::MemoryOrder::Acquire))
             return;
 
         this->time_slice_ms = time_slice_ms;
@@ -89,7 +89,7 @@ namespace sched {
                     __pause;
             });
 
-        initialized = true;
+        initialized.store(true, kstd::MemoryOrder::Release);
 
         LOG_INFO("[sched] Initialized with %ums time slice\n", time_slice_ms);
     }
@@ -97,7 +97,7 @@ namespace sched {
     Scheduler::~Scheduler() {
         kstd::InterruptGuard guard;
 
-        initialized = false;
+        initialized.store(false, kstd::MemoryOrder::Release);
 
         pit::unregister_handler(timer_tick, this);
         idt::unregister_isr(48);
@@ -109,6 +109,7 @@ namespace sched {
     }
 
     Task& Scheduler::create_task(const char* name, void (*entry_point)()) {
+        kstd::InterruptSpinLockGuard guard(lock);
         Task& task = tasks.emplace(next_task_id++, name, nullptr);
 
         task.ctx.eax = (uint32_t)entry_point;
@@ -117,7 +118,9 @@ namespace sched {
     }
 
     void Scheduler::schedule(idt::InterruptFrame* ctx) {
-        if (!initialized || tasks.empty())
+        kstd::InterruptSpinLockGuard guard(lock);
+
+        if (!initialized.load(kstd::MemoryOrder::Acquire) || tasks.empty())
             return;
 
         /*
@@ -170,7 +173,7 @@ namespace sched {
     }
 
     void Scheduler::yield() {
-        if (!initialized)
+        if (!initialized.load(kstd::MemoryOrder::Acquire))
             return;
 
         kstd::trigger_interrupt<48>();

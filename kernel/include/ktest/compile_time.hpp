@@ -1,7 +1,9 @@
 #pragma once
 
 #include <klibcpp/bitmap.hpp>
+#include <klibcpp/atomic.hpp>
 #include <klibcpp/memory.hpp>
+#include <klibcpp/spinlock.hpp>
 #include <klibcpp/static_array.hpp>
 #include <klibcpp/static_slot.hpp>
 #include <klibcpp/trivial.hpp>
@@ -10,6 +12,7 @@
 
 #include <int/idt.hpp>
 #include <mm/heap.hpp>
+#include <mm/layout.hpp>
 #include <mm/pmm.hpp>
 #include <mm/vmm.hpp>
 #include <sys/smp.hpp>
@@ -29,7 +32,7 @@ namespace ktest {
         struct DerivedType : BaseType {};
         struct UnrelatedType {};
 
-        static_assert(kstd::is_same_v<Seq4, kstd::index_sequence<0, 1, 2, 3>>);
+        static_assert(kstd::is_same_v<Seq4, kstd::index_sequence<0, 1, 2, 3> >);
 
         static_assert(kstd::is_same_v<kstd::remove_reference<int&>::type, int>);
         static_assert(kstd::is_same_v<kstd::remove_reference<int&&>::type, int>);
@@ -45,8 +48,11 @@ namespace ktest {
         static_assert(!kstd::is_base_of_v<BaseType, UnrelatedType>);
 
         static_assert(kstd::is_base_of_v<NonTransferable, TinyBitmap>);
-        static_assert(kstd::is_base_of_v<NonTransferable, kstd::StaticSlot<int>>);
-        static_assert(kstd::is_base_of_v<NonTransferable, kstd::StaticArray<int, 4>>);
+        static_assert(kstd::is_base_of_v<NonTransferable, kstd::Atomic<uint32_t> >);
+        static_assert(kstd::is_base_of_v<NonTransferable, kstd::Atomic<uint64_t> >);
+        static_assert(kstd::is_base_of_v<NonTransferable, kstd::SpinLock>);
+        static_assert(kstd::is_base_of_v<NonTransferable, kstd::StaticSlot<int> >);
+        static_assert(kstd::is_base_of_v<NonTransferable, kstd::StaticArray<int, 4> >);
 
         static_assert(TinyBitmap::BASE_ADDR == 0x1000);
         static_assert(TinyBitmap::MAX_UNITS == 64);
@@ -58,6 +64,8 @@ namespace ktest {
 
         static_assert(mm::PAGE_SIZE == 4096);
         static_assert(mm::MAX_FRAMES == (1u << 20));
+        static_assert(static_cast<int>(kstd::MemoryOrder::Relaxed) == __ATOMIC_RELAXED);
+        static_assert(static_cast<int>(kstd::MemoryOrder::SeqCst) == __ATOMIC_SEQ_CST);
         static_assert(mm::align_down(mm::PAGE_SIZE, mm::PAGE_SIZE) == mm::PAGE_SIZE);
         static_assert(mm::align_down(0x1234u, 0x1000u) == 0x1000u);
         static_assert(mm::align_up(mm::PAGE_SIZE, mm::PAGE_SIZE) == mm::PAGE_SIZE);
@@ -68,6 +76,24 @@ namespace ktest {
         static_assert(mm::PAGE_MASK == 0xFFFFF000);
         static_assert(sizeof(mm::Entry) == 4);
         static_assert(sizeof(HeapChunk_t) == 16);
+        static_assert(mm::layout::virt::validate());
+        static_assert(mm::layout::virt::region<mm::layout::virt::RegionId::KernelHeap>().id ==
+            mm::layout::virt::RegionId::KernelHeap);
+        static_assert(mm::layout::virt::find_region(mm::layout::virt::KERNEL_HEAP_BASE)->id ==
+            mm::layout::virt::RegionId::KernelHeap);
+        static_assert(mm::layout::virt::find_region(0x00800000) == nullptr);
+        static_assert(mm::layout::virt::region<mm::layout::virt::RegionId::KernelHeap>().base == HEAP_START);
+        static_assert(mm::layout::virt::region<mm::layout::virt::RegionId::KernelHeap>().size ==
+            (HEAP_MAX_ADDR - HEAP_START));
+        static_assert(mm::layout::virt::region<mm::layout::virt::RegionId::KernelHeap>().contains(HEAP_START));
+        static_assert(mm::layout::virt::region<mm::layout::virt::RegionId::KernelHeap>().contains(HEAP_START,
+            HEAP_MIN_SIZE));
+        static_assert(mm::layout::virt::region<mm::layout::virt::RegionId::ModuleSpace>().base ==
+            mm::layout::virt::MODULE_SPACE_BASE);
+        static_assert(mm::layout::virt::region<mm::layout::virt::RegionId::RecursivePageTables>().base == mm::PT_BASE);
+        static_assert(mm::layout::boot::LOW_USABLE_BASE == 0x00100000);
+        static_assert(mm::layout::boot::ACPI_SCAN_BASE == 0x000E0000);
+        static_assert(mm::layout::boot::ACPI_SCAN_END == 0x00100000);
         static_assert((HEAP_MIN_SIZE % mm::PAGE_SIZE) == 0);
         static_assert(HEAP_MIN_SIZE >= mm::PAGE_SIZE);
 
@@ -80,6 +106,7 @@ namespace ktest {
         static_assert(idt::get_isr_wrapper<14>().kind == idt::InterruptFrameKind::Base);
         static_assert(idt::get_isr_wrapper<32>().kind == idt::InterruptFrameKind::ContextSwitch);
         static_assert(idt::get_isr_wrapper<48>().kind == idt::InterruptFrameKind::ContextSwitch);
+        static_assert(idt::get_isr_wrapper<mm::vmm::TLB_SHOOTDOWN_VECTOR>().kind == idt::InterruptFrameKind::Base);
         static_assert(!idt::get_isr_wrapper<3>().has_error_code);
 
         static_assert(sizeof(smp::StackAnchor) == 16);

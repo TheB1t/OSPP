@@ -1,20 +1,22 @@
 #pragma once
 
 #include <klibcpp/cstdint.hpp>
+#include <klibcpp/spinlock.hpp>
 #include <klibcpp/static_array.hpp>
 #include <klibcpp/elf.hpp>
 #include <klibcpp/trivial.hpp>
 #include <klibcpp/bitmap.hpp>
 #include <sys/kexp.hpp>
+#include <mm/layout.hpp>
 #include <mm/vmm.hpp>
 #include <log.hpp>
 
 using namespace kstd::ELF32;
 
 using LMM = FixedBitmapAllocator<
-    0xA000000,
-    1 << 7,
-        mm::PAGE_SIZE
+    mm::layout::virt::MODULE_SPACE_BASE,
+    mm::layout::virt::MODULE_SPACE_PAGE_COUNT,
+    mm::PAGE_SIZE
 >;
 
 class Linker : public NonTransferable {
@@ -113,7 +115,11 @@ class Linker : public NonTransferable {
             }
 
             ~Layout() {
+                delete[] map;
+                delete obj;
+
                 map = nullptr;
+                obj = nullptr;
             }
 
             void* find_symbol(const char* name) {
@@ -154,12 +160,18 @@ class Linker : public NonTransferable {
             mem_mngr.clear();
         }
 
+        ~Linker();
+
         Layout* load(Object* obj);
+        void    unload(Layout* layout);
 
     private:
+        kstd::SpinLock lock_;
         LMM mem_mngr;
 
         bool    stage0(Layout* layout, Object* obj);
         bool    stage1(Region* reg, Object* obj);
         bool    stage2(Layout* layout);
+        void    unload_locked(Layout* layout);
+        void    unload_region_locked(Region& reg);
 };

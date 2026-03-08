@@ -4,6 +4,7 @@
 #include <klibcpp/cstring.hpp>
 #include <klibcpp/trivial.hpp>
 #include <klibcpp/static_slot.hpp>
+#include <klibcpp/atomic.hpp>
 #include <int/gdt.hpp>
 #include <driver/serial.hpp>
 #include <driver/pit.hpp>
@@ -43,17 +44,19 @@ namespace smp {
     };
 
     struct Core : public NonTransferable {
-        const uint8_t   id; // Logical ID
-        const uint8_t   apic_id;
-        const bool      is_bsp;
+        const uint8_t      id; // Logical ID
+        const uint8_t      apic_id;
+        const bool         is_bsp;
 
-        bool            initialized;
-        LAPIC           lapic;
-        Kernel*         kernel_;
-        StackDescriptor stack;
+        kstd::Atomic<bool> initialized;
+        LAPIC              lapic;
+        Kernel*            kernel_;
+        StackDescriptor    stack;
+        alignas(16) char fxsave_region[512];
 
         Core(Kernel* kernel, uint32_t lapic_base, uint8_t id, uint8_t apic_id, bool is_bsp)
-            : id(id), apic_id(apic_id), is_bsp(is_bsp), initialized(false), lapic(lapic_base), kernel_(kernel) {}
+            : id(id), apic_id(apic_id), is_bsp(is_bsp), initialized(false), lapic(lapic_base), kernel_(kernel),
+              fxsave_region{} {}
 
         Kernel&           kernel();
         sched::Scheduler& scheduler();
@@ -107,8 +110,11 @@ namespace smp {
     class CoreManager : public NonTransferable {
         public:
             static constexpr uint16_t MAX_CORES = 255;
+            inline static CoreManager* instance_ = nullptr;
 
             CoreManager(Kernel* kernel, uint32_t lapic_base, kstd::StaticArray<madt::ent0, 64>& lapics) {
+                instance_ = this;
+
                 LAPIC   lapic(lapic_base);
 
                 uint8_t id          = 0;
@@ -171,6 +177,10 @@ namespace smp {
                 return core_count_;
             }
 
+            static CoreManager* instance() {
+                return instance_;
+            }
+
             Core& core(uint32_t index) {
                 if (index >= core_count_)
                     kstd::panic("core index out of range");
@@ -181,8 +191,12 @@ namespace smp {
             static void _pause() {
                 __asm__ volatile (
                      "1:\n"
-                     "    pause\n"
+                     "    sti\n"
+                     "    hlt\n"
                      "    jmp 1b\n"
+                     :
+                     :
+                     : "memory"
                 );
             }
 
@@ -215,7 +229,7 @@ namespace smp {
                     desc.anchor       = current_anchor();
                     desc.anchor->core = &core;
 
-                    core.initialized  = true;
+                    core.initialized.store(true, kstd::MemoryOrder::Release);
                     return;
                 }
 
@@ -231,6 +245,7 @@ namespace smp {
                 new_stack->init_stack_anchor(0, &core);
 
                 smp_stack_top = (uint32_t)desc.region_base + desc.region_size;
+                kstd::atomic_thread_fence(kstd::MemoryOrder::Release);
 
                 for (int i = 0; i < 3; i++) {
                     core.lapic.send_init_ipi(core.apic_id);
@@ -238,13 +253,13 @@ namespace smp {
                     core.lapic.send_startup_ipi(core.apic_id, 0x8);
                     pit::sleep_ticks(20);
 
-                    if (core.initialized)
+                    if (core.initialized.load(kstd::MemoryOrder::Acquire))
                         break;
 
                     LOG_WARN("[smp] Retrying core %u startup\n", core.apic_id);
                 }
 
-                if (!core.initialized)
+                if (!core.initialized.load(kstd::MemoryOrder::Acquire))
                     LOG_WARN("[smp] Failed to start core %u\n", core.apic_id);
             }
     };

@@ -306,7 +306,7 @@ class apic : public NonTransferable {
 
             lapic_base = madt->local_apic_addr;
             LOG_INFO("[apic] MADT found at 0x%08x\n", madt);
-            mm::vmm::map_page((uint32_t)madt, (uint32_t)madt, mm::Flags::Present | mm::Flags::Writable);
+            mm::vmm::map_identity_page((uint32_t)madt, mm::Flags::Present | mm::Flags::Writable);
 
             madt::entX* ent        = reinterpret_cast<madt::entX*>(reinterpret_cast<uint8_t*>(madt) + sizeof(MADT));;
             int32_t     size_bytes = madt->length - sizeof(MADT);
@@ -331,7 +331,7 @@ class apic : public NonTransferable {
 
                         ioapics.emplace(*ent1);
 
-                        mm::vmm::map_page((uint32_t)ent1->ioapic.base, (uint32_t)ent1->ioapic.base,
+                        mm::vmm::map_identity_page((uint32_t)ent1->ioapic.base,
                             mm::Flags::Present | mm::Flags::Writable);
                         break;
                     }
@@ -353,7 +353,8 @@ class apic : public NonTransferable {
                     }
                     case madt::ent_type::LAPIC_NMI: {
                         auto ent4 = reinterpret_cast<madt::ent4*>(ent);
-                        LOG_INFO("[apic] LINT: ACPI ID %d, flags 0x%04x, LINT %d\n", ent4->acpi_processor_id, ent4->flags,
+                        LOG_INFO("[apic] LINT: ACPI ID %d, flags 0x%04x, LINT %d\n", ent4->acpi_processor_id,
+                            ent4->flags,
                             ent4->lint);
 
                         lint_sources.emplace(*ent4);
@@ -376,7 +377,7 @@ class apic : public NonTransferable {
             mm::vmm::unmap_page((uint32_t)madt);
 
             LOG_INFO("[apic] LAPIC base: 0x%08x\n", lapic_base);
-            mm::vmm::map_page(lapic_base, lapic_base, mm::Flags::Present | mm::Flags::Writable);
+            mm::vmm::map_identity_page(lapic_base, mm::Flags::Present | mm::Flags::Writable);
         }
 
         void configure() {

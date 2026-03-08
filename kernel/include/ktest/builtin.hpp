@@ -3,39 +3,42 @@
 #include <kernel.hpp>
 
 #include <driver/pit.hpp>
+#include <klibcpp/atomic.hpp>
 #include <klibcpp/bitmap.hpp>
 #include <klibcpp/kstd.hpp>
 #include <klibcpp/memory.hpp>
+#include <klibcpp/spinlock.hpp>
 #include <klibcpp/static_array.hpp>
 #include <klibcpp/static_slot.hpp>
+#include <multiboot_utils.hpp>
 #include <ktest/compile_time.hpp>
 #include <ktest/engine.hpp>
 
 namespace ktest {
     namespace builtin {
         struct State {
-            bool     ran_immediate      = false;
-            bool     ran_finalize       = false;
-            bool     atexit_registered  = false;
+            bool     ran_immediate     = false;
+            bool     ran_finalize      = false;
+            bool     atexit_registered = false;
 
-            uint32_t global_ctor_count  = 0;
-            uint32_t global_dtor_count  = 0;
-            uint32_t local_ctor_count   = 0;
-            uint32_t local_dtor_count   = 0;
-            uint32_t raw_ctor_count     = 0;
-            uint32_t raw_dtor_count     = 0;
-            uint32_t shared_ctor_count  = 0;
-            uint32_t shared_dtor_count  = 0;
-            uint32_t slot_ctor_count    = 0;
-            uint32_t slot_dtor_count    = 0;
-            uint32_t array_ctor_count   = 0;
-            uint32_t array_dtor_count   = 0;
-            uint32_t atexit_calls       = 0;
-            uint32_t task1_runs         = 0;
-            uint32_t task2_runs         = 0;
+            uint32_t global_ctor_count = 0;
+            uint32_t global_dtor_count = 0;
+            uint32_t local_ctor_count  = 0;
+            uint32_t local_dtor_count  = 0;
+            uint32_t raw_ctor_count    = 0;
+            uint32_t raw_dtor_count    = 0;
+            uint32_t shared_ctor_count = 0;
+            uint32_t shared_dtor_count = 0;
+            uint32_t slot_ctor_count   = 0;
+            uint32_t slot_dtor_count   = 0;
+            uint32_t array_ctor_count  = 0;
+            uint32_t array_dtor_count  = 0;
+            uint32_t atexit_calls      = 0;
+            uint32_t task1_runs        = 0;
+            uint32_t task2_runs        = 0;
 
-            bool     task1_finished     = false;
-            bool     task2_finished     = false;
+            bool     task1_finished    = false;
+            bool     task2_finished    = false;
         };
 
         inline State& state() {
@@ -136,22 +139,25 @@ namespace ktest {
         }
 
         inline uint32_t low_boot_reserved_end(const Kernel& kernel) {
-            uint32_t reserved_end = mm::align_up(reinterpret_cast<uint32_t>(&__kernel_end), mm::PAGE_SIZE);
+            uint32_t       reserved_end = mm::align_up(reinterpret_cast<uint32_t>(&__kernel_end), mm::PAGE_SIZE);
+            const uint32_t modules_end  = multiboot::max_module_end_aligned(kernel._mboot);
 
-            if (TEST_MASK(kernel._mboot.flags, MULTIBOOT_INFO_MODS)) {
-                auto* modules = reinterpret_cast<const multiboot_module_t*>(kernel._mboot.mods_addr);
-                for (uint32_t i = 0; i < kernel._mboot.mods_count; ++i) {
-                    const uint32_t mod_end = mm::align_up(modules[i].mod_end, mm::PAGE_SIZE);
-                    if (mod_end > reserved_end)
-                        reserved_end = mod_end;
-                }
-            }
+            if (modules_end > reserved_end)
+                reserved_end = modules_end;
 
             return reserved_end;
         }
 
         inline uint32_t find_fresh_test_page_base() {
-            for (uint32_t addr = 0x04000000; addr < 0xF0000000; addr += 0x00400000) {
+            constexpr uint32_t pde_span   = mm::layout::virt::IDENTITY_WINDOW_SIZE;
+            constexpr uint32_t search_min =
+                static_cast<uint32_t>(mm::layout::virt::region<mm::layout::virt::RegionId::BootstrapIdentity>().end());
+            constexpr uint32_t search_max = mm::layout::virt::RECURSIVE_PT_BASE;
+
+            for (uint32_t addr = search_min; addr < search_max; addr += pde_span) {
+                if (mm::layout::virt::occupied(addr))
+                    continue;
+
                 if (!mm::pde_entry(addr).has_flag(mm::Present))
                     return addr;
             }
@@ -185,7 +191,7 @@ namespace ktest {
                     const uint32_t ctor_before = state().raw_ctor_count;
                     const uint32_t dtor_before = state().raw_dtor_count;
 
-                    RawLifetimeProbe* probe = new RawLifetimeProbe(0x12345678);
+                    RawLifetimeProbe* probe    = new RawLifetimeProbe(0x12345678);
                     KTEST_ASSERT(sess, probe);
                     KTEST_EXPECT(sess, probe->magic == 0x12345678);
 
@@ -329,7 +335,7 @@ namespace ktest {
             run_case(sess, "static-array-edge-cases", [&]() {
                     const uint32_t ctor_before = state().array_ctor_count;
                     const uint32_t dtor_before = state().array_dtor_count;
-                    constexpr size_t npos = kstd::StaticArray<ArrayProbe, 4>::npos;
+                    constexpr size_t npos      = kstd::StaticArray<ArrayProbe, 4>::npos;
 
                     kstd::StaticArray<ArrayProbe, 4> arr;
 
@@ -343,7 +349,7 @@ namespace ktest {
                     ArrayProbe& p2 = arr.emplace_at(2, 2);
                     ArrayProbe& p3 = arr.emplace_at(3, 3);
 
-                    auto it = arr.begin();
+                    auto it        = arr.begin();
                     KTEST_EXPECT(sess, it.index() == 0);
                     KTEST_EXPECT(sess, (*it).value == 1);
 
@@ -352,7 +358,7 @@ namespace ktest {
                     KTEST_EXPECT(sess, it->value == 2);
 
                     const auto& carr = arr;
-                    auto cit = carr.begin();
+                    auto cit         = carr.begin();
                     KTEST_EXPECT(sess, cit.index() == 0);
                     ++cit;
                     KTEST_EXPECT(sess, cit.index() == 2);
@@ -515,6 +521,57 @@ namespace ktest {
                     KTEST_EXPECT(sess, !bp.has_error_code);
                 });
 
+            run_case(sess, "atomic-primitives", [&]() {
+                    kstd::Atomic<uint32_t> counter32(7);
+                    kstd::Atomic<uint64_t> counter64(0x100000000ull);
+                    kstd::Atomic<bool>     flag(false);
+
+                    KTEST_EXPECT(sess, counter32.load() == 7);
+                    KTEST_EXPECT(sess, counter32.fetch_add(5) == 7);
+                    KTEST_EXPECT(sess, counter32.load() == 12);
+                    KTEST_EXPECT(sess, counter32.fetch_sub(2) == 12);
+                    KTEST_EXPECT(sess, counter32.load() == 10);
+                    KTEST_EXPECT(sess, counter32.exchange(42) == 10);
+                    KTEST_EXPECT(sess, counter32.load() == 42);
+
+                    uint32_t expected32 = 42;
+                    KTEST_EXPECT(sess, counter32.compare_exchange_strong(expected32, 99,
+                    kstd::MemoryOrder::AcqRel, kstd::MemoryOrder::Acquire));
+                    KTEST_EXPECT(sess, counter32.load() == 99);
+
+                    expected32 = 42;
+                    KTEST_EXPECT(sess, !counter32.compare_exchange_strong(expected32, 77,
+                    kstd::MemoryOrder::AcqRel, kstd::MemoryOrder::Acquire));
+                    KTEST_EXPECT(sess, expected32 == 99);
+
+                    KTEST_EXPECT(sess, counter64.fetch_add(0x20ull) == 0x100000000ull);
+                    KTEST_EXPECT(sess, counter64.load() == 0x100000020ull);
+                    KTEST_EXPECT(sess, counter64.fetch_sub(0x10ull) == 0x100000020ull);
+                    KTEST_EXPECT(sess, counter64.load() == 0x100000010ull);
+
+                    KTEST_EXPECT(sess, !flag.load());
+                    flag.store(true, kstd::MemoryOrder::Release);
+                    KTEST_EXPECT(sess, flag.load(kstd::MemoryOrder::Acquire));
+                    KTEST_EXPECT(sess, flag.exchange(false) == true);
+                    KTEST_EXPECT(sess, !flag.load());
+                });
+
+            run_case(sess, "spinlock-basic", [&]() {
+                    kstd::SpinLock lock;
+
+                    KTEST_EXPECT(sess, lock.try_lock());
+                    KTEST_EXPECT(sess, !lock.try_lock());
+                    lock.unlock();
+
+                    {
+                        kstd::SpinLockGuard guard(lock);
+                        KTEST_EXPECT(sess, !lock.try_lock());
+                    }
+
+                    KTEST_EXPECT(sess, lock.try_lock());
+                    lock.unlock();
+                });
+
             sess.end_suite();
         }
 
@@ -525,19 +582,56 @@ namespace ktest {
                     const uint32_t reserved_end = low_boot_reserved_end(kernel);
                     const uint32_t free_before  = mm::pmm::free_memory();
                     const uint32_t used_before  = mm::pmm::used_memory();
+                    const uint32_t total_before = mm::pmm::total_memory();
 
-                    const uint32_t frame = mm::pmm::alloc_frame();
+                    const uint32_t frame        = mm::pmm::alloc_frame();
                     KTEST_ASSERT(sess, frame != 0);
 
                     KTEST_EXPECT(sess, (frame % mm::PAGE_SIZE) == 0);
                     KTEST_EXPECT(sess, frame >= reserved_end);
+                    KTEST_EXPECT(sess, total_before == free_before + used_before);
                     KTEST_EXPECT(sess, mm::pmm::used_memory() == used_before + mm::PAGE_SIZE);
                     KTEST_EXPECT(sess, mm::pmm::free_memory() == free_before - mm::PAGE_SIZE);
+                    KTEST_EXPECT(sess, mm::pmm::total_memory() == total_before);
 
                     mm::pmm::free_frame(frame);
 
                     KTEST_EXPECT(sess, mm::pmm::used_memory() == used_before);
                     KTEST_EXPECT(sess, mm::pmm::free_memory() == free_before);
+                    KTEST_EXPECT(sess, mm::pmm::total_memory() == total_before);
+                });
+
+            run_case(sess, "pmm-low-bootstrap-pages-reserved", [&]() {
+                    const uint32_t reserved_end = low_boot_reserved_end(kernel);
+                    uint32_t checked            = 0;
+
+                    auto* mmap        = reinterpret_cast<const multiboot_memory_map_t*>(kernel._mboot.mmap_addr);
+                    uint32_t mmap_end = kernel._mboot.mmap_addr + kernel._mboot.mmap_length;
+
+                    while (reinterpret_cast<uint32_t>(mmap) < mmap_end) {
+                        if (mmap->type == MULTIBOOT_MEMORY_AVAILABLE) {
+                            uint32_t base = static_cast<uint32_t>(mmap->addr);
+                            uint32_t end  = base + static_cast<uint32_t>(mmap->len);
+
+                            if (base < mm::layout::boot::LOW_USABLE_BASE)
+                                base = mm::layout::boot::LOW_USABLE_BASE;
+                            if (end > reserved_end)
+                                end = reserved_end;
+
+                            base = mm::align_up(base, mm::PAGE_SIZE);
+                            end  = mm::align_down(end, mm::PAGE_SIZE);
+
+                            for (uint32_t addr = base; addr < end; addr += mm::PAGE_SIZE) {
+                                ++checked;
+                                KTEST_EXPECT(sess, mm::pmm::frame_used(addr));
+                            }
+                        }
+
+                        mmap = reinterpret_cast<const multiboot_memory_map_t*>(
+                            reinterpret_cast<uint32_t>(mmap) + mmap->size + sizeof(mmap->size));
+                    }
+
+                    KTEST_EXPECT(sess, checked > 0);
                 });
 
             run_case(sess, "vmm-lookup-no-side-effects", [&]() {
@@ -565,7 +659,7 @@ namespace ktest {
                     KTEST_EXPECT(sess, mm::vmm::virt_to_phys(virt + mm::PAGE_SIZE) == 0xFFFFFFFFu);
 
                     volatile uint32_t* word = reinterpret_cast<volatile uint32_t*>(virt + 0x40);
-                    *word                   = 0xA5A55A5A;
+                    *word = 0xA5A55A5A;
                     KTEST_EXPECT(sess, *word == 0xA5A55A5A);
 
                     mm::vmm::unmap_page(virt);
@@ -575,7 +669,7 @@ namespace ktest {
                 });
 
             run_case(sess, "heap-reuse-and-alignment", [&]() {
-                    Heap& heap = kernel._heap.get();
+                    Heap& heap    = kernel._heap.get();
 
                     void* reused0 = heap.alloc(96);
                     KTEST_ASSERT(sess, reused0 != nullptr);
@@ -599,7 +693,7 @@ namespace ktest {
                 });
 
             run_case(sess, "heap-coalesce", [&]() {
-                    Heap& heap = kernel._heap.get();
+                    Heap& heap   = kernel._heap.get();
 
                     void* block0 = heap.alloc(0x200);
                     void* block1 = heap.alloc(0x200);

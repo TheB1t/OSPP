@@ -2,6 +2,7 @@
 
 #include <klibcpp/cstdint.hpp>
 #include <klibcpp/cstring.hpp>
+#include <mm/layout.hpp>
 #include <mm/vmm.hpp>
 #include <log.hpp>
 
@@ -71,7 +72,7 @@ class acpi {
 
             LOG_INFO("[acpi] RSDT found at 0x%08x\n", (uint32_t)rsdt);
             // Map only SDT header for read it
-            mm::vmm::map_page((uint32_t)rsdt, (uint32_t)rsdt, mm::Flags::Present | mm::Flags::Writable);
+            mm::vmm::map_identity_page((uint32_t)rsdt, mm::Flags::Present | mm::Flags::Writable);
             if (!validate_checksum(rsdt)) {
                 LOG_WARN("[acpi] RSDT checksum invalid\n");
                 mm::vmm::unmap_page((uint32_t)rsdt);
@@ -79,8 +80,7 @@ class acpi {
             }
 
             // Map rest of SDT data
-            mm::vmm::map_pages((uint32_t)rsdt, (uint32_t)rsdt, rsdt->length / mm::PAGE_SIZE,
-                mm::Flags::Present | mm::Flags::Writable);
+            mm::vmm::map_identity_span((uint32_t)rsdt, rsdt->length, mm::Flags::Present | mm::Flags::Writable);
         }
 
         template<typename T>
@@ -119,7 +119,8 @@ class acpi {
         static SDTHeader* rsdt;
 
         static RSDP2* find_rsdp() {
-            for (uint32_t ptr = 0xE0000; ptr < 0x100000; ptr += sizeof(uint32_t)) {
+            for (uint32_t ptr = mm::layout::boot::ACPI_SCAN_BASE; ptr < mm::layout::boot::ACPI_SCAN_END;
+                ptr += sizeof(uint32_t)) {
                 RSDP2* rsdp = (RSDP2*)ptr;
                 if (strncmp(rsdp->signature, (char*)"RSD PTR ", 8) == 0)
                     return rsdp;
